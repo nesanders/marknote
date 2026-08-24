@@ -31,8 +31,11 @@
                     "url": "https://invent.kde.org/pim/kmime"
                 },
                 {
-                    "type": "patch",
-                    "path": "flatpak-kmime-version.patch"
+                    "type": "shell",
+                    "commands": [
+                        "sed -i -E 's/set\\(KF_DEP_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"\\)/set(KF_DEP_VERSION \"6.24.0\")/' CMakeLists.txt",
+                        "sed -i -E 's/find_package\\(ECM [0-9]+\\.[0-9]+\\.[0-9]+ NO_MODULE\\)/find_package(ECM 6.24.0 NO_MODULE)/' CMakeLists.txt"
+                    ]
                 }
             ],
             "cleanup": [
