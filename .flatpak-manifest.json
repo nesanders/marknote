@@ -34,7 +34,9 @@
                     "type": "shell",
                     "commands": [
                         "sed -i -E 's/set\\(KF_DEP_VERSION \"[0-9]+\\.[0-9]+\\.[0-9]+\"\\)/set(KF_DEP_VERSION \"6.24.0\")/' CMakeLists.txt",
-                        "sed -i -E 's/find_package\\(ECM [0-9]+\\.[0-9]+\\.[0-9]+ NO_MODULE\\)/find_package(ECM 6.24.0 NO_MODULE)/' CMakeLists.txt"
+                        "grep -qF 'set(KF_DEP_VERSION \"6.24.0\")' CMakeLists.txt || { echo 'kmime CMakeLists.txt no longer matches expected KF_DEP_VERSION pattern; update the sed in .flatpak-manifest.json'; exit 1; }",
+                        "sed -i -E 's/find_package\\(ECM [0-9]+\\.[0-9]+\\.[0-9]+ NO_MODULE\\)/find_package(ECM 6.24.0 NO_MODULE)/' CMakeLists.txt",
+                        "grep -qF 'find_package(ECM 6.24.0 NO_MODULE)' CMakeLists.txt || { echo 'kmime CMakeLists.txt no longer matches expected find_package(ECM ...) pattern; update the sed in .flatpak-manifest.json'; exit 1; }"
                     ]
                 }
             ],
