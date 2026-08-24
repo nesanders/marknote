@@ -1,0 +1,47 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches:
+      - ci/flatpak-build
+  workflow_dispatch: {}
+
+jobs:
+  flatpak-build:
+    name: Build marknote.flatpak
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Add Flathub remote
+        run: |
+          flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install KDE SDK and Platform runtimes
+        run: |
+          flatpak install --user -y --noninteractive flathub org.kde.Sdk//6.10 org.kde.Platform//6.10
+
+      - name: Build with flatpak-builder and export to repo
+        run: |
+          flatpak-builder --user --force-clean \
+            --state-dir=.flatpak-builder \
+            --repo=flatpak-repo \
+            build-dir .flatpak-manifest.json
+
+      - name: Build single-file bundle
+        run: |
+          flatpak build-bundle flatpak-repo marknote.flatpak org.kde.marknote
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: marknote-flatpak
+          path: marknote.flatpak
+          if-no-files-found: error
