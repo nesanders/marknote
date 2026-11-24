@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.ki18n
 import org.kde.marknote
@@ -85,8 +86,10 @@ ToolButton {
     Popup {
         id: popup
         y: root.height + Kirigami.Units.smallSpacing
-        x: Math.min(0, (root.parent ? root.parent.width : root.width) - width - root.x)
-        width: Kirigami.Units.gridUnit * 22
+        // Opens under the button; non-negative margins make Qt keep it inside the window.
+        x: 0
+        margins: Kirigami.Units.smallSpacing
+        width: Math.min(Kirigami.Units.gridUnit * 22, (root.Window.window ? root.Window.window.width : Kirigami.Units.gridUnit * 22) - 2 * Kirigami.Units.smallSpacing)
         padding: Kirigami.Units.largeSpacing
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         onOpened: activityModel.reload()
