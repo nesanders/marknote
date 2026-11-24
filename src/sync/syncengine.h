@@ -4,6 +4,7 @@
 #pragma once
 
 #include "remotebackend.h"
+#include "../crypto/vaultcrypto.h"
 
 #include <QHash>
 #include <QSet>
@@ -48,6 +49,11 @@ struct SyncResult {
     QStringList conflictCopies; ///< relative paths of conflict copies created locally
     QStringList changedLocalPaths; ///< local files written or removed (editor must reload)
     QStringList errors;
+    /// Plain notes in an encrypted notebook that was locked: not sent, so
+    /// they never reach the destination unencrypted.
+    QStringList heldBack;
+    int oldVersionsDeleted = 0;
+    int trashDeleted = 0;
 
     bool ok() const
     {
@@ -80,6 +86,13 @@ public:
 
     SyncResult run(const Progress &progress = {});
 
+    /// The notebook key while the notebook is unlocked (called on the sync thread).
+    using KeyProvider = std::function<std::optional<VaultCrypto::Key>()>;
+    void setKeyProvider(const KeyProvider &provider);
+    /// Also delete readable leftovers at the destination: earlier versions of
+    /// every note and this notebook's trash (after encrypting it).
+    void setPurgeReadable(bool purge);
+
     static QByteArray md5Hex(const QByteArray &data);
     /// Paths the engine never syncs (its own state, the local trash).
     static bool isExcluded(const QString &relativePath);
@@ -101,6 +114,8 @@ private:
     RemoteBackend *m_backend;
     QString m_statePath;
     QString m_trashStamp;
+    KeyProvider m_keyProvider;
+    bool m_purgeReadable = false;
 };
 
 } // namespace Sync

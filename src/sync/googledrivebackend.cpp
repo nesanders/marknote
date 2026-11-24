@@ -362,4 +362,84 @@ bool GoogleDriveBackend::remove(const RemoteFile &file, QString *error)
     return true;
 }
 
+bool GoogleDriveBackend::deleteOldVersions(const RemoteFile &file, int *deleted, QString *error)
+{
+    if (file.id.isEmpty() || file.isFolder) {
+        return true;
+    }
+    QStringList revisions;
+    QString pageToken;
+    do {
+        QUrl url = apiUrl(u"/drive/v3/files/"_s + file.id + u"/revisions"_s);
+        QUrlQuery query;
+        query.addQueryItem(u"fields"_s, u"nextPageToken,revisions(id)"_s);
+        query.addQueryItem(u"pageSize"_s, u"200"_s);
+        if (!pageToken.isEmpty()) {
+            query.addQueryItem(u"pageToken"_s, pageToken);
+        }
+        url.setQuery(query);
+        QJsonObject json;
+        if (!checkJson(send("GET", url, {}, {}, error), &json, u"Listing versions of “%1”"_s.arg(file.path), error)) {
+            return false;
+        }
+        for (const QJsonValue &v : json.value(u"revisions"_s).toArray()) {
+            revisions << v.toObject().value(u"id"_s).toString();
+        }
+        pageToken = json.value(u"nextPageToken"_s).toString();
+    } while (!pageToken.isEmpty());
+
+    // Oldest first; the last one is the current content and must stay.
+    revisions.removeLast();
+    for (const QString &revision : std::as_const(revisions)) {
+        const QUrl url = apiUrl(u"/drive/v3/files/"_s + file.id + u"/revisions/"_s + revision);
+        if (!checkJson(send("DELETE", url, {}, {}, error), nullptr, u"Deleting an old version of “%1”"_s.arg(file.path), error)) {
+            return false;
+        }
+        if (deleted) {
+            ++*deleted;
+        }
+    }
+    return true;
+}
+
+bool GoogleDriveBackend::emptyTrash(int *deleted, QString *error)
+{
+    // Only this notebook's folders (known from the last listing): never the
+    // rest of the user's Drive trash.
+    const QStringList folderIds = m_folderIds.values();
+    for (const QString &folderId : folderIds) {
+        QStringList trashed;
+        QString pageToken;
+        do {
+            QUrl url = apiUrl(u"/drive/v3/files"_s);
+            QUrlQuery query;
+            query.addQueryItem(u"q"_s, u"'%1' in parents and trashed = true"_s.arg(escapeQuery(folderId)));
+            query.addQueryItem(u"fields"_s, u"nextPageToken,files(id)"_s);
+            query.addQueryItem(u"spaces"_s, u"drive"_s);
+            if (!pageToken.isEmpty()) {
+                query.addQueryItem(u"pageToken"_s, pageToken);
+            }
+            url.setQuery(query);
+            QJsonObject json;
+            if (!checkJson(send("GET", url, {}, {}, error), &json, u"Listing deleted notes"_s, error)) {
+                return false;
+            }
+            for (const QJsonValue &v : json.value(u"files"_s).toArray()) {
+                trashed << v.toObject().value(u"id"_s).toString();
+            }
+            pageToken = json.value(u"nextPageToken"_s).toString();
+        } while (!pageToken.isEmpty());
+        for (const QString &id : std::as_const(trashed)) {
+            // A trashed folder goes with everything in it.
+            if (!checkJson(send("DELETE", apiUrl(u"/drive/v3/files/"_s + id), {}, {}, error), nullptr, u"Deleting a note from the trash"_s, error)) {
+                return false;
+            }
+            if (deleted) {
+                ++*deleted;
+            }
+        }
+    }
+    return true;
+}
+
 } // namespace Sync

@@ -189,6 +189,16 @@ bool SyncEngine::trashLocal(const QString &relativePath, QString *error)
     return true;
 }
 
+void SyncEngine::setKeyProvider(const KeyProvider &provider)
+{
+    m_keyProvider = provider;
+}
+
+void SyncEngine::setPurgeReadable(bool purge)
+{
+    m_purgeReadable = purge;
+}
+
 SyncResult SyncEngine::run(const Progress &progress)
 {
     SyncResult result;
@@ -254,13 +264,53 @@ SyncResult SyncEngine::run(const Progress &progress)
     QStringList ordered(paths.cbegin(), paths.cend());
     ordered.sort();
 
+    // Encrypted notebook (its vault may arrive during this very sync).
+    auto isEncryptedNotebook = [this]() {
+        return QFile::exists(absolute(u".marknote/vault.json"_s));
+    };
+    // A plain note in an encrypted notebook: must be encrypted before it leaves.
+    auto isPlainNoteInVault = [&](const QString &path, const QByteArray &data) {
+        return path.endsWith(u".md"_s) && isEncryptedNotebook() && !VaultCrypto::isEncryptedNote(QString::fromUtf8(data));
+    };
+    auto readLocal = [this](const QString &path) {
+        QFile f(absolute(path));
+        return f.open(QFile::ReadOnly) ? f.readAll() : QByteArray();
+    };
+    // Would sending this path need a key we do not have?
+    auto mustHold = [&](const QString &path) {
+        if (!isPlainNoteInVault(path, readLocal(path))) {
+            return false;
+        }
+        return !(m_keyProvider && m_keyProvider());
+    };
+    auto hold = [&](const QString &path) {
+        result.heldBack << path;
+    };
+    QHash<QString, RemoteFile> uploadedFiles;
+
     auto upload = [&](const QString &path, const RemoteFile *existing) -> bool {
         QFile f(absolute(path));
         if (!f.open(QFile::ReadOnly)) {
             result.errors << u"Cannot read %1"_s.arg(path);
             return false;
         }
-        const QByteArray data = syncedContent(path, f.readAll());
+        QByteArray data = syncedContent(path, f.readAll());
+        f.close();
+        if (isPlainNoteInVault(path, data)) {
+            const auto key = m_keyProvider ? m_keyProvider() : std::nullopt;
+            if (!key) {
+                hold(path);
+                return false;
+            }
+            // Encrypt it here too, so this device and the destination agree.
+            data = VaultCrypto::encryptNote(QString::fromUtf8(data), *key, {}).toUtf8();
+            QString err;
+            if (!writeLocal(path, data, &err)) {
+                result.errors << err;
+                return false;
+            }
+            result.changedLocalPaths << path;
+        }
         RemoteFile uploaded;
         QString err;
         if (!m_backend->upload(path, data, existing, &uploaded, &err)) {
@@ -268,6 +318,7 @@ SyncResult SyncEngine::run(const Progress &progress)
             return false;
         }
         next.files.insert(path, md5Hex(data));
+        uploadedFiles.insert(path, uploaded);
         ++result.uploaded;
         result.log.append({SyncChange::Sent, path, {}});
         return true;
@@ -313,6 +364,8 @@ SyncResult SyncEngine::run(const Progress &progress)
                 }
             } else if (hasBase && r == b) {
                 upload(path, &rf); // only the local copy changed
+            } else if (mustHold(path)) {
+                hold(path); // decide once it can be encrypted: no conflict copy now
             } else {
                 // Both changed (or both new and different): keep both.
                 const QString copy = conflictCopyPath(path);
@@ -436,6 +489,26 @@ SyncResult SyncEngine::run(const Progress &progress)
             } else if (QDir().mkpath(absolute(folder))) {
                 next.folders.insert(folder);
             }
+        }
+    }
+
+    // After encrypting: remove readable leftovers at the destination.
+    if (m_purgeReadable) {
+        report(u"Deleting earlier versions…"_s);
+        for (auto it = next.files.cbegin(); it != next.files.cend(); ++it) {
+            const QString &path = it.key();
+            if (!path.endsWith(u".md"_s)) {
+                continue;
+            }
+            const RemoteFile rf = uploadedFiles.contains(path) ? uploadedFiles.value(path) : remoteFiles.value(path);
+            QString err;
+            if (!rf.id.isEmpty() && !m_backend->deleteOldVersions(rf, &result.oldVersionsDeleted, &err)) {
+                result.errors << err;
+            }
+        }
+        QString err;
+        if (!m_backend->emptyTrash(&result.trashDeleted, &err)) {
+            result.errors << err;
         }
     }
 

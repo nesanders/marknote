@@ -49,6 +49,26 @@ public:
 
     /// Delete recoverably where the destination supports it (Drive: trash).
     virtual bool remove(const RemoteFile &file, QString *error) = 0;
+
+    /// Delete the earlier versions the destination keeps of a file (Drive's
+    /// version history), leaving the current one. Used after encrypting a
+    /// notebook so no readable version remains. Default: none are kept.
+    virtual bool deleteOldVersions(const RemoteFile &file, int *deleted, QString *error)
+    {
+        Q_UNUSED(file)
+        Q_UNUSED(deleted)
+        Q_UNUSED(error)
+        return true;
+    }
+
+    /// Permanently delete what remove() put in this destination's trash (only
+    /// this notebook's files). Default: nothing is kept.
+    virtual bool emptyTrash(int *deleted, QString *error)
+    {
+        Q_UNUSED(deleted)
+        Q_UNUSED(error)
+        return true;
+    }
 };
 
 } // namespace Sync

@@ -62,6 +62,9 @@ public:
 
     /// The notebook key, if unlocked (any thread). Counts as activity for auto-lock.
     std::optional<VaultCrypto::Key> keyFor(const QString &notebook);
+    /// Like keyFor(), but does not count as use: background work (sync) must
+    /// not keep a notebook from locking itself.
+    std::optional<VaultCrypto::Key> peekKey(const QString &notebook);
 
 Q_SIGNALS:
     void changed();

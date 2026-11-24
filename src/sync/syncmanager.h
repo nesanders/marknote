@@ -81,6 +81,10 @@ public:
     Q_INVOKABLE void markSeen(const QString &file);
     Q_INVOKABLE void markAllSeen(const QString &notebookPath);
     static QString activityPath(const QString &notebookPath);
+    /// After encrypting a notebook: delete the readable copies Marknote can
+    /// reach (this device's sync trash now; at the destination, earlier
+    /// versions and its trash on the next sync), then sync.
+    Q_INVOKABLE void purgeReadableCopies(const QString &notebookPath);
     /// Background sync settings changed: restart the timer.
     Q_INVOKABLE void backgroundSettingsChanged();
 

@@ -278,6 +278,14 @@ export class Library extends EventTarget {
         if (minutes > 0 && this.keys.size && Date.now() - this.lastUse > minutes * 60000) this.lock();
     }
 
+    /** Look up this notebook's vault file on Drive (two small requests). */
+    async refreshVault() {
+        const nb = this.notebook;
+        const dot = (await this.drive.listChildren(nb.id)).find((f) => f.name === '.marknote' && f.mimeType.endsWith('.folder'));
+        const file = dot ? (await this.drive.listChildren(dot.id)).find((f) => f.name === 'vault.json') : null;
+        if (this.notebook === nb && file) await this.loadVault(file, true);
+    }
+
     async loadVault(file, fetchMissing) {
         if (!file) {
             this.vault = null;
@@ -682,8 +690,21 @@ export class Library extends EventTarget {
         await this.countPending();
     }
 
+    /**
+     * A plain note written before this device knew its notebook was encrypted
+     * (e.g. queued offline): encrypt it now, or keep it back while locked.
+     */
+    async sealIfNeeded(item, text, notebookId = null) {
+        const inThisNotebook = notebookId ? notebookId === this.notebook?.id : this.items.get(item.id) === item;
+        if (!this.vault || !inThisNotebook || Vault.isEncryptedNote(text)) return text;
+        const key = this.key();
+        if (!key) throw new LockedError();
+        return Vault.encryptNote(text, key, '');
+    }
+
     /** Upload a note's stored form (raw: encrypted in an encrypted notebook). */
     async upload(item, text, baseMd5) {
+        text = await this.sealIfNeeded(item, text);
         return this.guard(async () => {
             if (item.id.startsWith('local-')) throw new OfflineError('not uploaded yet');
             const remote = await this.drive.getMeta(item.id);
@@ -866,9 +887,19 @@ export class Library extends EventTarget {
     async flushOutbox() {
         const ops = (await this.store.all('outbox')).map((o) => o.value).sort((a, b) => a.at - b.at);
         const conflicts = [];
+        // The notebook may have been encrypted elsewhere since these were queued:
+        // learn that before anything is uploaded.
+        if (ops.length && this.notebook) {
+            try {
+                await this.refreshVault();
+            } catch (e) {
+                if (!isRetryable(e)) throw e;
+            }
+        }
         for (const op of ops) {
             try {
                 if (op.type === 'create') {
+                    op.text = await this.sealIfNeeded(op, op.text, op.notebookId);
                     const file = await this.guard(() => this.drive.createFile(op.parentId ?? op.notebookId, op.name, op.text));
                     await this.store.del('outbox', op.id);
                     await this.store.del('content', op.id);
@@ -894,6 +925,7 @@ export class Library extends EventTarget {
                 }
             } catch (e) {
                 if (isNetworkError(e) || e instanceof AuthError) break;
+                if (e instanceof LockedError) continue; // kept until the notebook is unlocked
                 this.lastError = e.message;
                 await this.store.del('outbox', op.type === 'create' ? op.id : `save:${op.id}`);
             }

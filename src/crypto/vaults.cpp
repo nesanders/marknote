@@ -198,6 +198,16 @@ std::optional<VaultCrypto::Key> Vaults::keyFor(const QString &notebook)
     return *it;
 }
 
+std::optional<VaultCrypto::Key> Vaults::peekKey(const QString &notebook)
+{
+    QMutexLocker lock(&m_mutex);
+    const auto it = m_keys.constFind(notebook);
+    if (it == m_keys.constEnd()) {
+        return std::nullopt;
+    }
+    return *it;
+}
+
 bool Vaults::unlock(const QString &notebook, const QString &password)
 {
     const QString nb = notebookOf(notebook);
