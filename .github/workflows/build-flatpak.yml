@@ -77,7 +77,23 @@ jobs:
           sudo apt-get install -y ostree
           export GNUPGHOME="$(mktemp -d)"
           if [ -n "$GPG_KEY" ]; then
-            printf '%s\n' "$GPG_KEY" | gpg --batch --import
+            # Accept the armored key as pasted (also with CRLF line ends or
+            # indentation), or base64 of it / of a binary export.
+            printf '%s\n' "$GPG_KEY" | tr -d '\r' | sed 's/^[[:space:]]*//' > "$GNUPGHOME/key.in"
+            if ! gpg --batch --import "$GNUPGHOME/key.in" 2>/dev/null \
+              && ! { base64 -d "$GNUPGHOME/key.in" > "$GNUPGHOME/key.bin" 2>/dev/null && gpg --batch --import "$GNUPGHOME/key.bin" 2>/dev/null; }; then
+              # Describe what the secret looks like, without revealing it.
+              echo "::error::FLATPAK_GPG_PRIVATE_KEY is not a usable GPG key."
+              echo "Lines: $(wc -l < "$GNUPGHOME/key.in"), characters: $(wc -c < "$GNUPGHOME/key.in")"
+              grep -q 'BEGIN PGP PRIVATE KEY BLOCK' "$GNUPGHOME/key.in" && echo "Has a 'BEGIN PGP PRIVATE KEY BLOCK' line." || echo "No 'BEGIN PGP PRIVATE KEY BLOCK' line."
+              grep -q 'END PGP PRIVATE KEY BLOCK' "$GNUPGHOME/key.in" && echo "Has an 'END PGP PRIVATE KEY BLOCK' line." || echo "No 'END PGP PRIVATE KEY BLOCK' line (cut off?)."
+              grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$GNUPGHOME/key.in" && echo "Looks like a PUBLIC key: the secret needs the private key (gpg --armor --export-secret-keys)."
+              exit 1
+            fi
+            if ! gpg --list-secret-keys --with-colons | grep -q '^sec'; then
+              echo "::error::FLATPAK_GPG_PRIVATE_KEY holds only a public key; export it with gpg --armor --export-secret-keys."
+              exit 1
+            fi
           elif [ "$IS_MASTER" = true ]; then
             echo "::warning::No FLATPAK_GPG_PRIVATE_KEY secret: the Flatpak repository is not published. See README › Installing this fork."
             exit 0

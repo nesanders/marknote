@@ -203,19 +203,28 @@ Single builds are also available as files: *Actions › Build Flatpak* › a run
 <details><summary>Setting up the repository (owner of this GitHub repository, once)</summary>
 
 The repository is signed with a GPG key whose private half is stored only as a GitHub
-Actions secret. Create a key without a passphrase, just for this:
+Actions secret. Create a key without a passphrase, just for this, in **one** terminal:
 
 ```sh
 export GNUPGHOME="$(mktemp -d)"
 gpg --batch --passphrase '' --quick-gen-key "Marknote Flatpak builds" ed25519 sign never
 gpg --armor --export-secret-keys > marknote-flatpak-key.asc
+head -1 marknote-flatpak-key.asc   # must print: -----BEGIN PGP PRIVATE KEY BLOCK-----
 ```
 
-Add the contents of `marknote-flatpak-key.asc` as the secret `FLATPAK_GPG_PRIVATE_KEY`
-(*Settings › Secrets and variables › Actions › New repository secret*), then delete the
-file (`shred -u marknote-flatpak-key.asc`) and `$GNUPGHOME`. Keep a copy in your password
-manager if you like: a new key later means everyone has to add the repository again.
-The next build of `master` publishes the repository at `/flatpak/` on the GitHub Pages site.
+Store it as the secret `FLATPAK_GPG_PRIVATE_KEY`, either with the GitHub CLI (no copy and
+paste involved):
+
+```sh
+gh secret set FLATPAK_GPG_PRIVATE_KEY --repo nesanders/marknote < marknote-flatpak-key.asc
+```
+
+or in *Settings › Secrets and variables › Actions › New repository secret*, pasting the
+**whole contents** of the file (from `-----BEGIN` to `-----END PGP PRIVATE KEY BLOCK-----`).
+Then delete the file (`shred -u marknote-flatpak-key.asc`) and `rm -rf "$GNUPGHOME"`. Keep a
+copy in your password manager if you like: a new key later means everyone has to add the
+repository again. The next build of `master` publishes the repository at `/flatpak/` on the
+GitHub Pages site; if the secret is not a usable key, that build says what it looks like.
 
 </details>
 
