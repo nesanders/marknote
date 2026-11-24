@@ -35,6 +35,7 @@ public:
         Icon, ///< emoji or icon theme name ("" when unset)
         IconIsEmoji,
         Tags, ///< QStringList
+        ManualOrder, ///< sort key for View › Sort Notes › Manual
     };
     Q_ENUM(Role)
 

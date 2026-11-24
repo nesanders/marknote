@@ -4,8 +4,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon, ItemIcon } from './icons.jsx';
 import { formatCreated } from './NoteView.jsx';
+import { sortManual } from '../library.js';
 
-function sortItems(items, sort) {
+function sortItems(items, sort, order) {
+    if (sort === 'manual') return sortManual(items, order);
     return [...items].sort((a, b) => {
         if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
         if (!a.isFolder && sort === 'created') return (b.created ?? 0) - (a.created ?? 0);
@@ -23,7 +25,7 @@ const TOUCH_SLOP = 10;
  * note moves next to it, onto empty space moves to the top level.
  * Mouse: press and move. Touch: hold, then move (hold and release = menu).
  */
-function useDrag({ library, onMove, onMenu, expand }) {
+function useDrag({ library, onMove, onPlace, onMenu, expand, manual }) {
     const [drag, setDrag] = useState(null); // { item, x, y, target: {parentId, rowId, label} | null }
     const press = useRef(null);
     const suppressClick = useRef(false);
@@ -41,6 +43,17 @@ function useDrag({ library, onMove, onMenu, expand }) {
         } else {
             const over = library.items.get(row.dataset.id);
             if (!over) return null;
+            // Manual order: the upper or lower part of a row places before or after it.
+            if (manual && over.id !== item.id && !(item.isFolder && library.isInside(item.id, over.id))) {
+                const r = row.getBoundingClientRect();
+                const rel = (y - r.top) / r.height;
+                const zone = over.isFolder ? (rel < 0.25 ? 'before' : rel > 0.75 ? 'after' : null) : (rel < 0.5 ? 'before' : 'after');
+                if (zone) {
+                    const where = over.parentId ? library.items.get(over.parentId).title : library.notebook.name;
+                    return { parentId: over.parentId, rowId: over.id, place: zone, overId: over.id,
+                        label: `${zone === 'before' ? 'above' : 'below'} “${over.title}”${over.parentId !== item.parentId ? ` in ${where}` : ''}` };
+                }
+            }
             parentId = over.isFolder ? over.id : over.parentId;
             rowId = over.isFolder ? over.id : over.parentId;
         }
@@ -81,7 +94,8 @@ function useDrag({ library, onMove, onMenu, expand }) {
     const finish = (commit) => {
         clearTimeout(hoverTimer.current);
         setDrag((d) => {
-            if (d && commit && d.target && !d.target.same) onMove(d.item, d.target.parentId);
+            if (d && commit && d.target?.place) onPlace(d.item, d.target.overId, d.target.place === 'after');
+            else if (d && commit && d.target && !d.target.same) onMove(d.item, d.target.parentId);
             return null;
         });
     };
@@ -162,7 +176,7 @@ function useDrag({ library, onMove, onMenu, expand }) {
             removeEventListener('touchend', onTouchEnd);
             removeEventListener('keydown', onKey);
         };
-    }, [library]);
+    }, [library, manual]);
 
     const rowHandlers = (item) => ({
         onPointerDown: (e) => {
@@ -197,11 +211,11 @@ function useDrag({ library, onMove, onMenu, expand }) {
     return { drag, treeRef, rowHandlers };
 }
 
-function Row({ item, depth, expanded, selected, onToggle, onOpen, onMenu, settings, filtering, handlers, dropTarget, dragging }) {
+function Row({ item, depth, expanded, selected, onToggle, onOpen, onMenu, settings, filtering, handlers, dropTarget, dropPlace, dragging }) {
     const isOpen = filtering || expanded;
     return (
         <div role="treeitem" aria-expanded={item.isFolder ? isOpen : undefined} aria-selected={selected} data-id={item.id}
-            class={'row' + (selected ? ' selected' : '') + (item.isFolder ? ' folder' : '') + (dropTarget ? ' drop-target' : '') + (dragging ? ' dragging' : '')}
+            class={'row' + (selected ? ' selected' : '') + (item.isFolder ? ' folder' : '') + (dropTarget ? ' drop-target' : '') + (dropPlace ? ' drop-' + dropPlace : '') + (dragging ? ' dragging' : '')}
             style={{ '--depth': depth }} tabIndex={0}
             onClick={() => (item.isFolder ? onToggle(item) : onOpen(item))}
             onKeyDown={(e) => {
@@ -229,25 +243,27 @@ function Row({ item, depth, expanded, selected, onToggle, onOpen, onMenu, settin
     );
 }
 
-export function Tree({ library, visible, selectedId, settings, setSettings, onOpen, onMenu, onMove }) {
+export function Tree({ library, visible, selectedId, settings, setSettings, onOpen, onMenu, onMove, onPlace }) {
     const expanded = settings.expanded ?? {};
     const toggle = (folder) => setSettings((s) => ({ ...s, expanded: { ...s.expanded, [folder.id]: !s.expanded?.[folder.id] } }));
     const expand = (id) => setSettings((s) => ({ ...s, expanded: { ...s.expanded, [id]: true } }));
-    const { drag, treeRef, rowHandlers } = useDrag({ library, onMove, onMenu, expand });
+    const manual = settings.sort === 'manual' && !visible;
+    const { drag, treeRef, rowHandlers } = useDrag({ library, onMove, onPlace, onMenu, expand, manual });
 
     const rows = [];
     const walk = (parentId, depth) => {
-        for (const item of sortItems(library.children(parentId), settings.sort)) {
+        for (const item of sortItems(library.children(parentId), settings.sort, library.orderOf(parentId))) {
             if (visible && !visible.has(item.id)) continue;
             rows.push(<Row key={item.id} item={item} depth={depth} expanded={!!expanded[item.id]} selected={item.id === selectedId}
                 onToggle={toggle} onOpen={onOpen} onMenu={onMenu} settings={settings} filtering={!!visible}
-                handlers={rowHandlers(item)} dropTarget={drag?.target && !drag.target.same && drag.target.rowId === item.id}
+                handlers={rowHandlers(item)} dropTarget={drag?.target && !drag.target.same && !drag.target.place && drag.target.rowId === item.id}
+                dropPlace={drag?.target?.place && drag.target.overId === item.id ? drag.target.place : null}
                 dragging={drag?.item.id === item.id} />);
             if (item.isFolder && (visible || expanded[item.id])) walk(item.id, depth + 1);
         }
     };
     walk(null, 0);
-    const toRoot = drag?.target && !drag.target.same && drag.target.parentId === null;
+    const toRoot = drag?.target && !drag.target.same && !drag.target.place && drag.target.parentId === null;
     return (
         <div class={'tree' + (toRoot ? ' drop-root' : '') + (drag ? ' is-dragging' : '')} role="tree" aria-label="Notes" ref={treeRef}>
             {rows}
@@ -255,7 +271,7 @@ export function Tree({ library, visible, selectedId, settings, setSettings, onOp
             {drag && (
                 <div class="drag-ghost" style={{ left: `${drag.x + 14}px`, top: `${drag.y + 10}px` }} aria-hidden="true">
                     <ItemIcon item={drag.item} size={16} /> {drag.item.title}
-                    <span class="drag-hint">{drag.target && !drag.target.same ? `→ ${drag.target.label}` : drag.target?.same ? 'already here' : 'can’t drop here'}</span>
+                    <span class="drag-hint">{drag.target && !drag.target.same ? (drag.target.place ? drag.target.label : `→ ${drag.target.label}`) : drag.target?.same ? 'already here' : 'can’t drop here'}</span>
                 </div>
             )}
         </div>

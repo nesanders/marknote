@@ -202,6 +202,11 @@ void NoteMetadata::filesChanged(const QStringList &paths)
     for (const QString &path : paths) {
         m_cache.remove(path);
         m_bodyCache.remove(path);
+        if (path.endsWith(u"/.directory"_s)) {
+            const QString folder = QFileInfo(path).absolutePath();
+            m_orderCache.remove(folder);
+            Q_EMIT orderChanged(folder);
+        }
     }
     ++m_revision;
     Q_EMIT revisionChanged();
@@ -258,6 +263,117 @@ QString NoteMetadata::folderIconForPath(const QString &folderPath) const
     const KConfigGroup group = config.group(QString::fromLatin1(desktopGroup));
     const QString emoji = group.readEntry(emojiKey, QString());
     return emoji.isEmpty() ? group.readEntry("Icon", QString()) : emoji;
+}
+
+namespace
+{
+const auto orderKey = "X-Marknote-Order";
+
+/// What the notes list shows of a folder: subfolders and Markdown notes, no hidden files.
+QStringList listedEntries(const QString &folder)
+{
+    QStringList out;
+    const QDir dir(folder);
+    for (const QFileInfo &info : dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot)) {
+        if (info.isDir() || info.fileName().endsWith(u".md"_s)) {
+            out << info.fileName();
+        }
+    }
+    return out;
+}
+
+QString displayName(const QString &fileName)
+{
+    return fileName.endsWith(u".md"_s) ? fileName.chopped(3) : fileName;
+}
+} // namespace
+
+QStringList NoteMetadata::folderOrder(const QString &folderPath) const
+{
+    const QString folder = QDir::cleanPath(folderPath);
+    auto it = m_orderCache.constFind(folder);
+    if (it != m_orderCache.constEnd()) {
+        return *it;
+    }
+    QStringList order;
+    const QString dotDirectory = folder + u"/.directory"_s;
+    if (QFile::exists(dotDirectory)) {
+        const KConfig config(dotDirectory, KConfig::SimpleConfig);
+        order = config.group(QString::fromLatin1(desktopGroup)).readEntry(orderKey, QStringList());
+    }
+    m_orderCache.insert(folder, order);
+    return order;
+}
+
+QString NoteMetadata::manualSortKey(const QString &filePath) const
+{
+    const QFileInfo info(filePath);
+    const qsizetype index = folderOrder(info.absolutePath()).indexOf(info.fileName());
+    if (index >= 0) {
+        return QString::number(index).rightJustified(6, u'0');
+    }
+    return u"~"_s + displayName(info.fileName()).toLower();
+}
+
+bool NoteMetadata::writeOrder(const QString &folder, const QStringList &order)
+{
+    KConfig config(folder + u"/.directory"_s, KConfig::SimpleConfig);
+    KConfigGroup group = config.group(QString::fromLatin1(desktopGroup));
+    group.writeEntry(orderKey, order);
+    const bool ok = config.sync();
+    m_orderCache.insert(folder, order);
+    ++m_revision;
+    Q_EMIT orderChanged(folder);
+    Q_EMIT revisionChanged();
+    return ok;
+}
+
+bool NoteMetadata::placeInOrder(const QString &folderPath, const QString &name, const QString &target, bool after)
+{
+    QString folder = folderPath.startsWith(u"file:"_s) ? QUrl(folderPath).toLocalFile() : folderPath;
+    folder = QDir::cleanPath(folder);
+    if (name == target) {
+        return true;
+    }
+    // The order as shown now: listed entries that still exist, then the rest by name.
+    const QStringList present = listedEntries(folder);
+    QStringList order;
+    for (const QString &entry : folderOrder(folder)) {
+        if (present.contains(entry) && !order.contains(entry)) {
+            order << entry;
+        }
+    }
+    QStringList rest;
+    for (const QString &entry : present) {
+        if (!order.contains(entry)) {
+            rest << entry;
+        }
+    }
+    std::sort(rest.begin(), rest.end(), [](const QString &a, const QString &b) {
+        return displayName(a).toLower() < displayName(b).toLower();
+    });
+    order << rest;
+
+    order.removeAll(name);
+    qsizetype at = order.indexOf(target);
+    if (at < 0) {
+        at = order.size();
+    } else if (after) {
+        ++at;
+    }
+    order.insert(at, name);
+    return writeOrder(folder, order);
+}
+
+void NoteMetadata::renameInOrder(const QString &folderPath, const QString &oldName, const QString &newName)
+{
+    const QString folder = QDir::cleanPath(folderPath);
+    QStringList order = folderOrder(folder);
+    const qsizetype at = order.indexOf(oldName);
+    if (at >= 0) {
+        order[at] = newName;
+        writeOrder(folder, order);
+    }
 }
 
 QString NoteMetadata::folderIcon(const QUrl &folder) const

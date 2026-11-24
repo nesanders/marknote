@@ -32,7 +32,11 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   (visible by default; *View › Show Tags / Show Created Date*).
 - *View › Density*: **Compact** (one line, tag dots and a short date), **Normal** (title, then
   date and tags on a tight second line) or **Comfortable** rows. Dates and tags show in all three.
-- *View › Sort Notes › By Created Date*.
+- *View › Sort Notes › By Created Date*, or **Manual**: drag a note or folder onto the upper
+  or lower half of another to put it above or below (a line shows where); the middle of a
+  folder still moves it inside. The order is kept per folder in its `.directory` file, so
+  it syncs and the web app shows the same. New notes go to the bottom; renamed ones keep
+  their place.
 
 **Filter bar**
 - Always visible under the notes list (<kbd>Ctrl</kbd>+<kbd>E</kbd> to focus).

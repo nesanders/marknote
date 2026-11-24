@@ -132,6 +132,7 @@ Controls.MenuBar {
             Controls.MenuItem { action: root.actions.sortByName }
             Controls.MenuItem { action: root.actions.sortByModified }
             Controls.MenuItem { action: root.actions.sortByCreated }
+            Controls.MenuItem { action: root.actions.sortManual }
         }
         Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.expandAll }

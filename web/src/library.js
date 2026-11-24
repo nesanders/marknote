@@ -77,6 +77,18 @@ export function resolveAssetPath(src, notePath, notebookName, filesByPath) {
     return filesByPath.has(rel) ? { path: rel } : { missing: s };
 }
 const NOTEBOOKS_KEY = '__notebooks__';
+const ORDER_KEY = 'X-Marknote-Order';
+
+/** Manual order (View › Sort › Manual): listed names first, the rest by title. */
+export function sortManual(items, order) {
+    const pos = new Map((order ?? []).map((name, i) => [name, i]));
+    return [...items].sort((a, b) => {
+        const pa = pos.get(a.name) ?? Infinity;
+        const pb = pos.get(b.name) ?? Infinity;
+        if (pa !== pb) return pa - pb;
+        return a.title.toLowerCase() < b.title.toLowerCase() ? -1 : a.title.toLowerCase() > b.title.toLowerCase() ? 1 : 0;
+    });
+}
 
 export function noteName(fileName) {
     return fileName.endsWith(NOTE_SUFFIX) ? fileName.slice(0, -NOTE_SUFFIX.length) : fileName;
@@ -104,6 +116,47 @@ export function parseDirectory(text) {
         const eq = t.indexOf('=');
         if (inEntry && eq > 0) out[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
     }
+    return out;
+}
+
+/*
+ * KDE config lists, as KConfig writes them: items joined by "," with "\\" and
+ * "," escaped, then the whole value escaped again ("\\", "\s", "\n", "\t").
+ */
+export function parseConfigList(value) {
+    // Undo the value escaping.
+    let text = '';
+    const raw = value ?? '';
+    for (let i = 0; i < raw.length; ++i) {
+        if (raw[i] === '\\' && i + 1 < raw.length) {
+            const c = raw[++i];
+            text += { s: ' ', n: '\n', t: '\t', r: '\r', '\\': '\\' }[c] ?? '\\' + c;
+        } else {
+            text += raw[i];
+        }
+    }
+    // Split the list.
+    const items = [];
+    let cur = '';
+    for (let i = 0; i < text.length; ++i) {
+        if (text[i] === '\\' && i + 1 < text.length) {
+            cur += text[++i];
+        } else if (text[i] === ',') {
+            items.push(cur);
+            cur = '';
+        } else {
+            cur += text[i];
+        }
+    }
+    if (cur.length || items.length) items.push(cur);
+    return items;
+}
+
+export function formatConfigList(items) {
+    const joined = items.map((s) => s.replaceAll('\\', '\\\\').replaceAll(',', '\\,')).join(',');
+    let out = joined.replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll('\t', '\\t').replaceAll('\r', '\\r');
+    if (out.startsWith(' ')) out = '\\s' + out.slice(1);
+    if (out.endsWith(' ')) out = out.slice(0, -1) + '\\s';
     return out;
 }
 
@@ -517,6 +570,7 @@ export class Library extends EventTarget {
         if (target) {
             target.icon = folderIconOf(dir);
             target.dirFileId = fileId;
+            target.order = parseConfigList(dir[ORDER_KEY]);
         } else if (this.notebook) {
             this.notebook.dirFileId = fileId;
             this.notebook.dir = dir;
@@ -793,6 +847,12 @@ export class Library extends EventTarget {
         const name = uniqueName(title, names, item.isFolder ? '' : NOTE_SUFFIX);
         if (name === item.name) return item;
         await this.guard(() => this.drive.rename(id, name));
+        const order = this.orderOf(item.parentId);
+        if (order.includes(item.name)) {
+            const next = order.map((n) => (n === item.name ? name : n));
+            item.name = name;
+            await this.editFolderDirectory(item.parentId, { [ORDER_KEY]: formatConfigList(next) }).catch(() => {});
+        }
         item.name = name;
         item.title = item.isFolder ? name : noteName(name);
         this.emit('tree');
@@ -860,6 +920,43 @@ export class Library extends EventTarget {
 
     setIcon(id, icon) {
         return this.editFrontMatter(id, (raw) => FM.setValue(raw, 'icon', icon));
+    }
+
+    /** The manual order of a folder (null: the notebook's top level). */
+    orderOf(parentId) {
+        if (!parentId) return parseConfigList(this.notebook?.dir?.[ORDER_KEY]);
+        return this.items.get(parentId)?.order ?? [];
+    }
+
+    /** Write a folder's .directory with some keys changed. */
+    async editFolderDirectory(folderId, changes) {
+        const target = folderId ? this.items.get(folderId) : null;
+        const fileId = target ? target.dirFileId : this.notebook.dirFileId;
+        const driveFolder = folderId ?? this.notebook.id;
+        await this.guard(async () => {
+            const current = fileId ? await this.drive.getText(fileId) : '';
+            const text = editDirectory(current, changes);
+            const saved = fileId ? await this.drive.updateFile(fileId, text, 'text/plain') : await this.drive.createFile(driveFolder, '.directory', text, 'text/plain');
+            await this.store.set('content', saved.id, { md5: saved.md5Checksum ?? '', text });
+            this.applyDirectory(target, saved.id, text);
+        });
+    }
+
+    /** Put an item just before or after another (moving it to that folder first if needed). */
+    async placeInOrder(id, targetId, after) {
+        const target = this.items.get(targetId);
+        if (!target || id === targetId) return;
+        let item = this.items.get(id);
+        if (item.parentId !== target.parentId) item = await this.move(id, target.parentId);
+        const parentId = target.parentId;
+        const present = this.children(parentId);
+        const order = sortManual(present, this.orderOf(parentId)).map((i) => i.name).filter((n) => n !== item.name);
+        let at = order.indexOf(target.name);
+        if (at < 0) at = order.length;
+        else if (after) ++at;
+        order.splice(at, 0, item.name);
+        await this.editFolderDirectory(parentId, { [ORDER_KEY]: formatConfigList(order) });
+        this.emit('tree');
     }
 
     async setFolderIcon(folderId, emoji) {

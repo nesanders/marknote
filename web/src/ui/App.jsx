@@ -156,7 +156,7 @@ function SettingsDialog({ settings, setSettings, library, account, onClose, onSi
                 </label>
                 <label class="field inline"><span>Sort notes</span>
                     <select value={settings.sort ?? 'name'} onChange={(e) => setSettings({ ...settings, sort: e.target.value })}>
-                        <option value="name">By name</option><option value="created">Newest first</option><option value="modified">Recently changed</option>
+                        <option value="name">By name</option><option value="created">Newest first</option><option value="modified">Recently changed</option><option value="manual">Manual (drag to arrange)</option>
                     </select>
                 </label>
                 <label class="field inline" title="Encrypted notebooks lock themselves when unused for this long"><span>Lock encrypted notebooks after</span>
@@ -571,6 +571,13 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             {loading && !library.items.size ? <p class="hint pad">Loading…</p> : (
                 <Tree library={library} visible={visible} selectedId={noteId} settings={settings} setSettings={setSettings}
                     onOpen={openNote} onMenu={itemMenu}
+                    onPlace={(item, overId, after) => {
+                        if (!library.online) {
+                            toast('Arranging notes needs a connection.', 'warning');
+                            return;
+                        }
+                        library.placeInOrder(item.id, overId, after).catch((e) => toast(e.message, 'error'));
+                    }}
                     onMove={(item, parentId) => {
                         if (!library.online) {
                             toast('Moving needs a connection.', 'warning');

@@ -220,6 +220,14 @@ QtObject {
         onTriggered: root.setSort("sort-created")
     }
 
+    property Kirigami.Action sortManual: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu sort notes", "Manual (Drag to Arrange)")
+        icon.name: "view-sort"
+        checkable: true
+        checked: Config.sortBehaviour === "sort-manual"
+        onTriggered: root.setSort("sort-manual")
+    }
+
     property Kirigami.Action lockAll: Kirigami.Action {
         text: KI18n.i18nc("@action:inmenu", "Lock Encrypted Notebooks")
         icon.name: "object-locked"

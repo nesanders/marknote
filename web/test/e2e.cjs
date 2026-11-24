@@ -355,6 +355,36 @@ async function demoPhone(browser, errors) {
     await ctx.close();
 }
 
+async function demoManualOrder(browser, errors) {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.evaluate(() => localStorage.setItem('marknote.settings', JSON.stringify({ sort: 'manual' })));
+    await page.reload();
+    await page.getByRole('button', { name: /Personal/ }).click();
+    await page.waitForSelector('.tree .row');
+    // A notebook with just two notes: put the second above the first.
+    await page.click('.notebook-actions, .tree-panel .toolbar [aria-label="New note"]');
+    await page.fill('.dialog input', 'Apples');
+    await page.click('.dialog button.primary');
+    await page.waitForSelector('.cm-content');
+    await page.getByRole('button', { name: 'Done editing' }).click();
+    const titles = () => page.locator('.tree .row .row-title').allTextContents();
+    assert.deepEqual(await titles(), ['Apples', 'Recipes']);
+    const a = await page.locator('.row:has-text("Recipes")').boundingBox();
+    const b = await page.locator('.row:has-text("Apples")').boundingBox();
+    await page.mouse.move(a.x + 60, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + 70, a.y + a.height / 2 - 10, { steps: 3 });
+    await page.mouse.move(b.x + 80, b.y + b.height * 0.2, { steps: 8 });
+    await page.waitForSelector('.row.drop-before');
+    await shot(page, 'manual-order-drag');
+    await page.mouse.up();
+    await page.waitForFunction(() => document.querySelector('.tree .row .row-title')?.textContent === 'Recipes');
+    assert.deepEqual(await titles(), ['Recipes', 'Apples']);
+    await page.close();
+}
+
 async function demoEncrypted(browser, errors) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
@@ -485,7 +515,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {
