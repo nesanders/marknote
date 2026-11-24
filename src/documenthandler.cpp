@@ -348,3 +348,12 @@ void DocumentHandler::slotMouseMovedWithControlReleased()
 }
 
 #include "moc_documenthandler.cpp"
+
+void DocumentHandler::reloadFiles(const QList<QUrl> &fileUrls)
+{
+    if (!m_fileUrl.isEmpty() && fileUrls.contains(m_fileUrl)) {
+        const QUrl url = m_fileUrl;
+        m_fileUrl.clear();
+        load(url);
+    }
+}

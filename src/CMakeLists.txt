@@ -17,13 +17,18 @@ target_compile_options(marknote_static PRIVATE
 )
 
 target_include_directories(marknote_static PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/notemetadata
     ${CMAKE_CURRENT_SOURCE_DIR}/mdoptions
     ${CMAKE_CURRENT_SOURCE_DIR}/mdtreemodel
     ${CMAKE_CURRENT_SOURCE_DIR}/commands
     ${CMAKE_CURRENT_SOURCE_DIR}/mdinlineparser
+    ${CMAKE_CURRENT_SOURCE_DIR}/mermaid
+    ${CMAKE_CURRENT_SOURCE_DIR}/sync
 )
 
 set_source_files_properties(qml/EditorActions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/FilterState.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 ecm_add_qml_module(marknote_static
     URI org.kde.marknote
@@ -32,6 +37,15 @@ ecm_add_qml_module(marknote_static
         qml/Main.qml
         qml/MainEditor.qml
         qml/NotesPage.qml
+        qml/AppActions.qml
+        qml/AppActionItem.qml
+        qml/AppMenuBar.qml
+        qml/FilterState.qml
+        qml/TagChip.qml
+        qml/IconPickerDialog.qml
+        qml/TagEditorDialog.qml
+        qml/NoteMetaStrip.qml
+        qml/NotebookSyncDialog.qml
         qml/NoteInlineStatusBar.qml
         qml/NoteLinkDialog.qml
         qml/NoteMetadataDialog.qml
@@ -93,7 +107,23 @@ ecm_add_qml_module(marknote_static
         emojiermodel.h emojiermodel.cpp
         emojierproxymodel.h emojierproxymodel.cpp
         commandbarhelper.cpp commandbarhelper.h
+        mermaid/mermaidrenderer.h
+        mermaid/jsenginemermaidrenderer.h mermaid/jsenginemermaidrenderer.cpp
+        mermaid/mermaidcssflattener.h mermaid/mermaidcssflattener.cpp
+        mermaid/mermaidsvgcache.h mermaid/mermaidsvgcache.cpp
+        mermaid/mermaidimageprovider.h mermaid/mermaidimageprovider.cpp
+        mermaid/mermaidhelper.h mermaid/mermaidhelper.cpp
+        mermaid/pele.qrc
         asyncdocbuilder/asyncdocbuilder.h asyncdocbuilder/asyncdocbuilder.cpp
+        notemetadata/frontmatter.h notemetadata/frontmatter.cpp
+        notemetadata/notemetadata.h notemetadata/notemetadata.cpp
+        sync/remotebackend.h
+        sync/syncengine.h sync/syncengine.cpp
+        sync/localfolderbackend.h sync/localfolderbackend.cpp
+        sync/googledrivebackend.h sync/googledrivebackend.cpp
+        sync/tokenstore.h sync/tokenstore.cpp
+        sync/googleauth.h sync/googleauth.cpp
+        sync/syncmanager.h sync/syncmanager.cpp
         mdoptions/mdoptions.h
         mdtreemodel/treeitem.h mdtreemodel/treeitem.cpp
         mdtreemodel/mdtreemodel.h mdtreemodel/mdtreemodel.cpp
@@ -143,6 +173,8 @@ add_subdirectory(settings)
 
 target_link_libraries(marknote_static
     PUBLIC
+        Qt::Network
+        Qt::NetworkAuth
         Qt::Core
         Qt::Gui
         Qt::Qml
@@ -200,6 +232,22 @@ if (WITH_KRUNNER)
             KF6::WindowSystem
     )
     target_compile_definitions(marknote_static PUBLIC HAVE_KRUNNER)
+endif()
+
+if (TARGET KF6::Wallet)
+    target_link_libraries(marknote_static PUBLIC KF6::Wallet)
+    target_compile_definitions(marknote_static PUBLIC HAVE_KWALLET)
+endif()
+
+# Optional OAuth client baked in at build time, for private local builds only.
+# Never set this in CI for a public repository: anyone can download the
+# artifacts and read the client out of the binary.
+set(MARKNOTE_GOOGLE_CLIENT_ID "" CACHE STRING "Google OAuth client ID for Drive sync")
+set(MARKNOTE_GOOGLE_CLIENT_SECRET "" CACHE STRING "Google OAuth client secret (installed-app clients are not confidential)")
+if (MARKNOTE_GOOGLE_CLIENT_ID)
+    set_property(SOURCE sync/syncmanager.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        MARKNOTE_GOOGLE_CLIENT_ID="${MARKNOTE_GOOGLE_CLIENT_ID}"
+        MARKNOTE_GOOGLE_CLIENT_SECRET="${MARKNOTE_GOOGLE_CLIENT_SECRET}")
 endif()
 
 if (TARGET md4c::md4c-html)

@@ -9,6 +9,7 @@ import QtQuick.Dialogs
 import QtQml.Models
 
 import org.kde.marknote
+import org.kde.marknote.settings
 import org.kde.notification
 import org.kde.ki18n
 import org.kde.kitemmodels 1.0 as KItemModels
@@ -27,7 +28,7 @@ Kirigami.ScrollablePage {
     readonly property bool isWideScreen: !!_window?.isWideScreen // qmllint disable missing-property
     property color backgroundColor: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.alternateBackgroundColor, 0.6)
     background: Rectangle {color: root.backgroundColor}
-    property string currentSearchText: ""
+    readonly property string currentSearchText: FilterState.active ? "x" : ""
     property int defaultPlaceholderWidth: notesList.width - (Kirigami.Units.largeSpacing * 4)
 
     bottomPadding: inlineStatusBar.visible ? inlineStatusBar.effectiveHeight : 0
@@ -99,6 +100,168 @@ Kirigami.ScrollablePage {
         }
     }
 
+    footer: ToolBar {
+        id: filterBar
+        visible: Config.showFilterBar && NavigationController.notebookPath.length > 0
+        position: ToolBar.Footer
+        leftPadding: Kirigami.Units.smallSpacing
+        rightPadding: Kirigami.Units.smallSpacing
+
+        Connections {
+            target: FilterState
+            function onFocusRequested(): void {
+                filterField.forceActiveFocus();
+                filterField.selectAll();
+            }
+            function onTextChanged(): void {
+                if (filterField.text !== FilterState.text) {
+                    filterField.text = FilterState.text;
+                }
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.SearchField {
+                    id: filterField
+                    Layout.fillWidth: true
+                    focusSequences: []
+                    placeholderText: FilterState.searchContents
+                        ? KI18n.i18nc("@info:placeholder", "Filter by name or text, or tag:name…")
+                        : KI18n.i18nc("@info:placeholder", "Filter by name, or tag:name…")
+                    onTextChanged: FilterState.text = text
+                    Keys.onEscapePressed: (event) => {
+                        if (text.length > 0) {
+                            clear();
+                        } else {
+                            notesList.forceActiveFocus();
+                        }
+                        event.accepted = true;
+                    }
+                    Keys.onDownPressed: notesList.forceActiveFocus()
+                }
+
+                ToolButton {
+                    id: contentsButton
+                    icon.name: "document-preview"
+                    text: KI18n.i18nc("@action:button search inside note text", "Contents")
+                    checkable: true
+                    checked: FilterState.searchContents
+                    display: root.width > Kirigami.Units.gridUnit * 16 ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    onToggled: FilterState.setSearchContents(checked)
+                    ToolTip.visible: hovered
+                    ToolTip.text: checked ? KI18n.i18nc("@info:tooltip", "Searching note names and text") : KI18n.i18nc("@info:tooltip", "Also search inside notes")
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                }
+
+                ToolButton {
+                    id: tagsButton
+                    icon.name: "tag"
+                    text: FilterState.tags.length > 0
+                        ? KI18n.i18nc("@action:button tag filter with count", "Tags (%1)", FilterState.tags.length)
+                        : KI18n.i18nc("@action:button", "Tags")
+                    display: root.width > Kirigami.Units.gridUnit * 16 ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    enabled: root.notebookTags.length > 0
+                    down: pressed || tagMenu.visible
+                    onPressed: tagMenu.popup(tagsButton, 0, -tagMenu.implicitHeight)
+                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
+                    ToolTip.text: KI18n.i18nc("@info:tooltip", "Filter by tag")
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+
+                    Menu {
+                        id: tagMenu
+                        Instantiator {
+                            model: root.notebookTags
+                            delegate: MenuItem {
+                                required property var modelData
+                                checkable: true
+                                checked: FilterState.tags.indexOf(modelData.name) !== -1
+                                text: KI18n.i18nc("@action:inmenu tag name and number of notes", "%1 (%2)", modelData.name, modelData.count)
+                                onTriggered: FilterState.toggleTag(modelData.name)
+                            }
+                            onObjectAdded: (index, object) => tagMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => tagMenu.removeItem(object)
+                        }
+                    }
+                }
+
+                ToolButton {
+                    icon.name: "dialog-close"
+                    text: KI18n.i18nc("@action:button", "Hide Filter Bar")
+                    display: AbstractButton.IconOnly
+                    onClicked: {
+                        FilterState.clear();
+                        Config.showFilterBar = false;
+                        Config.save();
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.text: text
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                }
+            }
+
+            Flow {
+                Layout.fillWidth: true
+                visible: FilterState.tags.length > 0
+                spacing: Kirigami.Units.smallSpacing
+
+                Repeater {
+                    model: FilterState.tags
+                    delegate: TagChip {
+                        required property string modelData
+                        tag: modelData
+                        removable: true
+                        selected: true
+                        onRemoveRequested: FilterState.toggleTag(modelData)
+                    }
+                }
+
+                RowLayout {
+                    visible: FilterState.tags.length > 1
+                    spacing: 0
+                    Label {
+                        text: KI18n.i18nc("@label tag filter match mode", "Match:")
+                        rightPadding: Kirigami.Units.smallSpacing
+                    }
+                    Button {
+                        text: KI18n.i18nc("@option:radio tag filter", "All Tags")
+                        checkable: true
+                        autoExclusive: true
+                        checked: !FilterState.matchAny
+                        flat: !checked
+                        onClicked: FilterState.setMatchAny(false)
+                    }
+                    Button {
+                        text: KI18n.i18nc("@option:radio tag filter", "Any Tag")
+                        checkable: true
+                        autoExclusive: true
+                        checked: FilterState.matchAny
+                        flat: !checked
+                        onClicked: FilterState.setMatchAny(true)
+                    }
+                }
+
+                ToolButton {
+                    text: KI18n.i18nc("@action:button", "Clear")
+                    icon.name: "edit-clear-all"
+                    onClicked: FilterState.clear()
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: pageNotesModel
+        function onTotalNotesCountChanged(): void {
+            root.refreshTags();
+        }
+    }
+
     Component {
         id: noteMetadataDialogComponent
         NoteMetadataDialog {}
@@ -143,152 +306,75 @@ Kirigami.ScrollablePage {
         spacing: Kirigami.Units.smallSpacing
         Layout.fillWidth: true
 
-        property bool searchOpen: false
+        ToolButton {
+            id: addButton
+            visible: !Kirigami.Settings.isMobile
+            display: AbstractButton.IconOnly
+            action: newNoteAction
+            ToolTip.delay: Kirigami.Units.toolTipDelay
+            ToolTip.visible: hovered
+            ToolTip.text: text
+        }
 
-        Item {
-            id: contentContainer
+        ToolButton {
+            visible: !Kirigami.Settings.isMobile
+            display: AbstractButton.IconOnly
+            icon.name: "folder-new"
+            text: KI18n.i18nc("@action:button", "New Folder")
+            onClicked: root.openNewEntryDialog(1, "")
+            ToolTip.delay: Kirigami.Units.toolTipDelay
+            ToolTip.visible: hovered
+            ToolTip.text: text
+        }
+
+        Kirigami.Heading {
+            id: heading
+            visible: root.isWideScreen
+            text: NavigationController.notebookName
             Layout.fillWidth: true
-            implicitHeight: Math.max(defaultHeader.implicitHeight, search.implicitHeight)
+            Layout.leftMargin: Kirigami.Units.largeSpacing
+            Layout.rightMargin: Kirigami.Units.largeSpacing
+            horizontalAlignment: Text.AlignHCenter
+            elide: Qt.ElideRight
+        }
 
-            RowLayout {
-                id: defaultHeader
-                anchors.fill: parent
-                scale: titleLayout.searchOpen ? 0.7 : 1.0
-                opacity: titleLayout.searchOpen ? 0 : 1
-                visible: opacity > 0
-                transformOrigin: Item.Center
-                Layout.fillWidth: true
-
-                Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration } }
-                Behavior on scale { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.OutBack } }
-
-                ToolButton {
-                    id: addButton
+        ToolButton {
+            id: headingButton
+            visible: !root.isWideScreen
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onClicked: ApplicationWindow.window.openBottomDrawer()
+            contentItem: RowLayout {
+                Item {
                     visible: !Kirigami.Settings.isMobile
-                    display: AbstractButton.IconOnly
-                    action: newNoteAction
-                    ToolTip.delay: Kirigami.Units.toolTipDelay
-                    ToolTip.visible: hovered
-                    ToolTip.text: text
+                    Layout.fillWidth: true
                 }
-
                 Kirigami.Heading {
-                    id: heading
-                    visible: root.isWideScreen
+                    type: Kirigami.Heading.Type.Primary
                     text: NavigationController.notebookName
-                    Layout.fillWidth: true
                     Layout.leftMargin: Kirigami.Units.largeSpacing
-                    Layout.rightMargin: Kirigami.Units.largeSpacing
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Qt.ElideRight
                 }
-
-                ToolButton {
-                    icon.name: root.isTreeExpanded ? "collapse-all" : "expand-all"
-                    text: root.isTreeExpanded ? KI18n.i18n("Collapse All") : KI18n.i18n("Expand All")
-                    display: AbstractButton.IconOnly
-                    visible: false
-                    onClicked: root.toggleExpandAll()
-                    ToolTip.visible: hovered
-                    ToolTip.text: text
+                Kirigami.Icon {
+                    source: "go-down-symbolic"
+                    implicitHeight: Kirigami.Units.gridUnit
                 }
-
-                ToolButton {
-                    id: headingButton
-                    visible: !root.isWideScreen
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    onClicked: ApplicationWindow.window.openBottomDrawer()
-                    contentItem: RowLayout {
-                        Item {
-                            visible: !Kirigami.Settings.isMobile
-                            Layout.fillWidth: true
-                        }
-                        Kirigami.Heading {
-                            type: Kirigami.Heading.Type.Primary
-                            text: NavigationController.notebookName
-                            Layout.leftMargin: Kirigami.Units.largeSpacing
-                        }
-                        Kirigami.Icon {
-                            source: "go-down-symbolic"
-                            implicitHeight: Kirigami.Units.gridUnit
-                        }
-                        Item { Layout.fillWidth: true }
-                    }
-                }
-            }
-
-            Item {
-                id: searchWrapper
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: titleLayout.searchOpen ? parent.width : 0
-                clip: true
-                visible: titleLayout.searchOpen
-
-                Behavior on width { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutCubic } }
-
-                Kirigami.SearchField {
-                    id: search
-                    focusSequences: []
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: contentContainer.width
-                    opacity: titleLayout.searchOpen ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration } }
-
-                    Shortcut {
-                        id: cancelShortcut
-                        enabled: titleLayout.searchOpen
-                        sequences: [StandardKey.Cancel]
-                        onActivated: if (titleLayout.searchOpen) { searchButton.clicked() }
-                    }
-                    onTextChanged: {
-                        filterModel.setFilterFixedString(search.text);
-                        root.currentSearchText = search.text;
-                    }
-                }
+                Item { Layout.fillWidth: true }
             }
         }
 
         ToolButton {
-            id: searchButton
-            icon.name: titleLayout.searchOpen ? "draw-arrow-back" : "search"
-            text: titleLayout.searchOpen ? KI18n.i18n("Exit Search (%1)", cancelShortcut.nativeText) : KI18n.i18n("Search notes (%1)", searchShortcut.nativeText)
+            icon.name: "view-filter"
+            text: KI18n.i18nc("@action:button", "Filter Notes")
             display: AbstractButton.IconOnly
-
+            visible: !Config.showFilterBar
+            onClicked: {
+                Config.showFilterBar = true;
+                Config.save();
+                FilterState.focusRequested();
+            }
             ToolTip.delay: Kirigami.Units.toolTipDelay
             ToolTip.visible: hovered
             ToolTip.text: text
-
-            Layout.alignment: Qt.AlignRight
-
-            // transform: Rotation {
-            //     origin.x: searchButton.width / 2
-            //     origin.y: searchButton.height / 2
-            //     axis { x: 0; y: 1; z: 0 }
-            //     angle: titleLayout.searchOpen ? 180 : 0
-            //     Behavior on angle { NumberAnimation { duration: Kirigami.Units.veryLongDuration; easing.type: Easing.InOutQuart } }
-            // }
-
-            onClicked: {
-                titleLayout.searchOpen = !titleLayout.searchOpen;
-                if (titleLayout.searchOpen) {
-                    search.forceActiveFocus();
-                } else {
-                    search.clear();
-                }
-            }
-
-            Shortcut {
-                id: searchShortcut
-                sequence: "Ctrl+E"
-                onActivated: if (!titleLayout.searchOpen) {
-                    searchButton.clicked()
-                }
-            }
         }
 
         ToolButton {
@@ -367,11 +453,176 @@ Kirigami.ScrollablePage {
         property int sortOrder: Qt.AscendingOrder
         filterCaseSensitivity: Qt.CaseInsensitive
         sortCaseSensitivity: Qt.CaseInsensitive
-        filterRole: NotesModel.Name
         sortRole: NotesModel.Name
         recursiveFilteringEnabled : true
         sourceModel: pageNotesModel
+        filterRowCallback: function(sourceRow, sourceParent) {
+            if (!FilterState.active) {
+                return true;
+            }
+            const idx = pageNotesModel.index(sourceRow, 0, sourceParent);
+            const name = pageNotesModel.data(idx, NotesModel.Name) ?? "";
+            if (pageNotesModel.data(idx, NotesModel.IsFolder)) {
+                return FilterState.acceptsFolder(name);
+            }
+            return FilterState.acceptsNote(name, pageNotesModel.data(idx, NotesModel.Tags), pageNotesModel.data(idx, NotesModel.Path));
+        }
         Component.onCompleted: filterModel.sort(0, filterModel.sortOrder)
+    }
+
+    Connections {
+        target: FilterState
+        function onRevisionChanged(): void {
+            filterRefresh.restart();
+        }
+        function onActiveChanged(): void {
+            if (FilterState.active) {
+                // Matches can be inside folders that were never opened.
+                pageNotesModel.fetchAll();
+            }
+        }
+    }
+
+    // Re-run the filter. KDescendantsProxyModel keeps stale expansion state when
+    // rows of its source vanish and reappear across several re-filters, so it is
+    // rebuilt (reattached) and every folder expanded to show the matches.
+    Timer {
+        id: filterRefresh
+        interval: 120
+        onTriggered: {
+            filterModel.invalidateFilter();
+            notesProxyModel.sourceModel = null;
+            notesProxyModel.sourceModel = filterModel;
+            root.setAllExpanded(true);
+        }
+    }
+
+    Connections {
+        target: NoteMetadata
+        function onRevisionChanged(): void {
+            if (FilterState.active) {
+                filterRefresh.restart();
+            }
+            root.refreshTags();
+        }
+    }
+
+    Connections {
+        target: pageNotesModel
+        function onRowsInserted(): void {
+            if (FilterState.active) {
+                filterRefresh.restart();
+            }
+        }
+    }
+
+    /// Every tag in this notebook with its note count, for the filter bar menu.
+    property var notebookTags: []
+    function refreshTags(): void {
+        root.notebookTags = NavigationController.notebookPath.length > 0
+            ? NoteMetadata.tagsInNotebook(NavigationController.notebookPath) : [];
+    }
+    Connections {
+        target: NavigationController
+        function onNotebookPathChanged(): void {
+            FilterState.clear();
+            root.refreshTags();
+        }
+    }
+    Component.onCompleted: refreshTags()
+
+    // --- API used by the menu bar (AppActions) ---
+
+    function setAllExpanded(expand: bool): void {
+        root.isTreeExpanded = !expand;
+        root.toggleExpandAll();
+    }
+
+    function openNewEntryDialog(type: int, parentPath: string): void {
+        if (noteMetadataDialogComponent.status !== Component.Ready) {
+            console.error("Error loading NoteMetadataDialog:", noteMetadataDialogComponent.errorString());
+            return;
+        }
+        const dialog = noteMetadataDialogComponent.createObject(root, {
+            mode: NoteMetadataDialog.Mode.Add,
+            model: pageNotesModel,
+            initialType: type,
+            parentFolder: parentPath.length > 0 ? ("file://" + root.cleanPath(parentPath)) : ""
+        }) as NoteMetadataDialog;
+        dialog.open();
+    }
+
+    function findDelegate(absPath: string): var {
+        const wanted = root.cleanPath(absPath);
+        for (let i = 0; i < notesList.count; i++) {
+            const item = notesList.itemAtIndex(i);
+            if (item && item.normPath === wanted) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    function startRename(absPath: string): void {
+        const item = root.findDelegate(absPath);
+        if (item) {
+            notesList.positionViewAtIndex(item.index, ListView.Contain);
+            item.renameField.enabled = true;
+            item.renameField.forceActiveFocus();
+            item.renameField.selectAll();
+        }
+    }
+
+    function exportNote(kind: string, url: url, name: string): void {
+        const kinds = {
+            html: [KI18n.i18nc("@title:window", "Export to HTML"), KI18n.i18n("HTML file (*.html)")],
+            pdf: [KI18n.i18nc("@title:window", "Export to PDF"), KI18n.i18n("PDF file (*.pdf)")],
+            odt: [KI18n.i18nc("@title:window", "Export to ODT"), KI18n.i18n("ODF Text Document (*.odt)")]
+        };
+        fileDialog.name = name;
+        fileDialog.path = url;
+        fileDialog.selectedFile = name + '.' + kind;
+        fileDialog.title = kinds[kind][0];
+        fileDialog.nameFilters = [kinds[kind][1]];
+        fileDialog.open();
+    }
+
+    /// Move a note or folder (by path or file URL) into @p destPath, keeping the editor on it.
+    function moveInto(source: string, destPath: string): void {
+        const src = root.cleanPath(source);
+        const dest = root.cleanPath(destPath);
+        if (src.length === 0 || dest.length === 0 || src === dest) {
+            return;
+        }
+        if (src.substring(0, src.lastIndexOf("/")) === dest) {
+            return; // already there
+        }
+        const newPath = dest + src.substring(src.lastIndexOf("/"));
+        const active = root.activeAbsolutePath;
+        if (pageNotesModel.moveEntry("file://" + src, "file://" + dest)) {
+            if (active === src) {
+                NavigationController.noteRenamed("file://" + src, "file://" + newPath);
+            } else if (active.startsWith(src + "/")) {
+                // The open note was inside the moved folder.
+                NavigationController.noteRenamed("file://" + active, "file://" + newPath + active.substring(src.length));
+            }
+        }
+    }
+
+    function duplicate(url: url): void {
+        pageNotesModel.duplicateNote(url);
+    }
+
+    function copyNote(url: url): void {
+        pageNotesModel.copyWholeNote(url);
+    }
+
+    function confirmDelete(name: string, path: string, url: url, isFolder: bool): void {
+        removeDialog.noteName = name;
+        removeDialog.notePath = path;
+        removeDialog.fileUrl = url;
+        removeDialog.isFolder = isFolder;
+        removeDialog.open();
     }
 
     KItemModels.KDescendantsProxyModel {
@@ -447,6 +698,17 @@ Kirigami.ScrollablePage {
                 }
                 PropertyChanges {
                     notesList.section.delegate: sectionDelegate
+                }
+                StateChangeScript { script: filterModel.sort(0, Qt.DescendingOrder) }
+            },
+            State {
+                name: "sort-created"
+                PropertyChanges {
+                    filterModel.sortRole: NotesModel.Created
+                    filterModel.sortOrder: Qt.DescendingOrder
+                }
+                PropertyChanges {
+                    notesList.section.delegate: nullComponent
                 }
                 StateChangeScript { script: filterModel.sort(0, Qt.DescendingOrder) }
             }
@@ -542,17 +804,87 @@ Kirigami.ScrollablePage {
         }
 
         Components.ConvergentContextMenu {
+            id: folderMenu
+            property Delegates.RoundedItemDelegate delegateItem
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "New Note Here…")
+                icon.name: "document-new"
+                onTriggered: root.openNewEntryDialog(0, folderMenu.delegateItem.normPath)
+            }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "New Subfolder…")
+                icon.name: "folder-new"
+                onTriggered: root.openNewEntryDialog(1, folderMenu.delegateItem.normPath)
+            }
+
+            Kirigami.Action { separator: true }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Rename")
+                icon.name: "edit-rename"
+                onTriggered: {
+                    folderMenu.delegateItem.renameField.enabled = true;
+                    folderMenu.delegateItem.renameField.forceActiveFocus();
+                    folderMenu.delegateItem.renameField.selectAll();
+                }
+            }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Set Icon…")
+                icon.name: "preferences-desktop-emoticons"
+                onTriggered: root._window.openIconPicker(folderMenu.delegateItem.fileUrl, true, folderMenu.delegateItem.name)
+            }
+
+            Kirigami.Action { separator: true }
+
+            Kirigami.Action {
+                text: folderMenu.delegateItem && folderMenu.delegateItem.kDescendantExpanded
+                    ? KI18n.i18nc("@action:inmenu", "Collapse") : KI18n.i18nc("@action:inmenu", "Expand")
+                icon.name: folderMenu.delegateItem && folderMenu.delegateItem.kDescendantExpanded ? "collapse-all" : "expand-all"
+                onTriggered: {
+                    pageNotesModel.fetchMore(folderMenu.delegateItem.path);
+                    notesProxyModel.toggleChildren(folderMenu.delegateItem.index);
+                }
+            }
+
+            Kirigami.Action { separator: true }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Delete")
+                icon.name: "delete"
+                onTriggered: root.confirmDelete(folderMenu.delegateItem.name, folderMenu.delegateItem.path, folderMenu.delegateItem.fileUrl, true)
+            }
+        }
+
+        Components.ConvergentContextMenu {
             id: menu
             property Delegates.RoundedItemDelegate delegateItem
 
             Kirigami.Action {
                 text: KI18n.i18nc("@action:inmenu", "Rename")
-                icon.name: "document-edit"
+                icon.name: "edit-rename"
                 onTriggered: {
                     menu.delegateItem.renameField.enabled = true;
                     menu.delegateItem.renameField.forceActiveFocus();
+                    menu.delegateItem.renameField.selectAll();
                 }
             }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Set Icon…")
+                icon.name: "preferences-desktop-emoticons"
+                onTriggered: root._window.openIconPicker(menu.delegateItem.fileUrl, false, menu.delegateItem.name)
+            }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Edit Tags…")
+                icon.name: "tag"
+                onTriggered: root._window.openTagEditor(menu.delegateItem.fileUrl, menu.delegateItem.name)
+            }
+
+            Kirigami.Action { separator: true }
 
             Kirigami.Action {
                 text: KI18n.i18nc("@action:inmenu", "Copy")
@@ -651,6 +983,10 @@ Kirigami.ScrollablePage {
             required property int index
             required property url fileUrl
             required property bool isFolder
+            required property var tags
+            required property string createdText
+            required property string noteIcon
+            required property bool noteIconIsEmoji
             property alias renameField: renameField
             property bool isRenaming: false
 
@@ -662,6 +998,15 @@ Kirigami.ScrollablePage {
             readonly property string normPath: root.cleanPath(path)
             readonly property bool isRelevant: normPath !== root.normRoot && normPath.startsWith(root.normRoot)
             readonly property int visualLevel: Math.max(1, (normPath.match(/\//g) || []).length - root.rootDepth)
+            readonly property string parentDir: normPath.substring(0, normPath.lastIndexOf("/"))
+            // Dolphin-style single line with columns when the list is wide enough.
+            readonly property bool wide: notesList.width > Kirigami.Units.gridUnit * 26
+            // View › Density: 0 compact (single line, tight), 1 normal, 2 comfortable.
+            readonly property int density: Config.treeDensity
+            readonly property bool compact: density === 0
+            readonly property var tagList: tags ? Array.from(tags) : []
+            readonly property bool showTags: Config.showTagsColumn && !isFolder && tagList.length > 0
+            readonly property bool showCreated: Config.showCreatedColumn && createdText.length > 0
 
             property bool isDropTarget: false
 
@@ -679,6 +1024,12 @@ Kirigami.ScrollablePage {
                 } else if (root._window) {
                     delegateItem.background.Kirigami.Theme.highlightColor = ApplicationWindow.window.Kirigami.Theme.highlightColor;
                 }
+            }
+
+            function openContextMenu(): void {
+                const target = delegateItem.isFolder ? folderMenu : menu;
+                target.delegateItem = delegateItem;
+                target.popup();
             }
 
             onColorChanged: updateColor();
@@ -706,6 +1057,17 @@ Kirigami.ScrollablePage {
             }
             Keys.onReturnPressed: if (!delegateItem.isRenaming && !renameField.enabled) { root.activateItem(delegateItem.index, kDescendantExpandable, path) }
             Keys.onEnterPressed: if (!delegateItem.isRenaming && !renameField.enabled) { root.activateItem(delegateItem.index, kDescendantExpandable, path) }
+            Keys.onPressed: (event) => {
+                if (event.key === Qt.Key_F2 && !renameField.enabled) {
+                    renameField.enabled = true;
+                    renameField.forceActiveFocus();
+                    renameField.selectAll();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Menu) {
+                    delegateItem.openContextMenu();
+                    event.accepted = true;
+                }
+            }
 
             DragHandler {
                 id: dragHandler
@@ -740,10 +1102,16 @@ Kirigami.ScrollablePage {
                 id: dropArea
 
                 anchors.fill: parent
-                anchors.margins: -Kirigami.Units.gridUnit * 1.5
+                anchors.margins: delegateItem.isFolder ? -Kirigami.Units.gridUnit * 0.5 : 0
                 z: 99
                 keys: ["application/x-marknote-note"]
-                enabled: delegateItem.isFolder
+
+                // Folders take the note; dropping on a note moves it next to that note.
+                readonly property string destination: delegateItem.isFolder ? delegateItem.normPath : delegateItem.parentDir
+
+                function sourcePath(drag): string {
+                    return root.cleanPath(drag.getDataAsString ? drag.getDataAsString("application/x-marknote-note") : "");
+                }
 
                 onEntered: (drag) => {
                     delegateItem.isDropTarget = true;
@@ -759,38 +1127,27 @@ Kirigami.ScrollablePage {
                 }
 
                 onDropped: (drop) => {
-                    if (drop.keys.indexOf("application/x-marknote-note") !== -1) {
-                        const noteUri = drop.getDataAsString("application/x-marknote-note");
-                        print(noteUri);
-                        pageNotesModel.moveEntry(noteUri, delegateItem.fileUrl);
-                        drop.acceptProposedAction();
-                    } else if (drop.keys.indexOf("text/uri-list") !== -1) {
-                        const uriList = drop.getDataAsString("text/uri-list");
-                        const noteUri = uriList.split("\n")[0].trim();
-                        pageNotesModel.moveEntry(noteUri, delegateItem.fileUrl);
-                        drop.acceptProposedAction();
-                    }
                     delegateItem.isDropTarget = false;
+                    let noteUri = "";
+                    if (drop.keys.indexOf("application/x-marknote-note") !== -1) {
+                        noteUri = drop.getDataAsString("application/x-marknote-note");
+                    } else if (drop.keys.indexOf("text/uri-list") !== -1) {
+                        noteUri = drop.getDataAsString("text/uri-list").split("\n")[0].trim();
+                    }
+                    root.moveInto(noteUri, dropArea.destination);
+                    drop.acceptProposedAction();
                 }
             }
-            ContextMenu.onRequested: (position) => {
-                menu.delegateItem = delegateItem;
 
-                if(delegateItem.kDescendantExpandable || delegateItem.isFolder) {
-                    console.assert(false, "Folder menu triggered, which is yet to be implemented.")
-                } else {
-                    menu.popup()
-                }
-            }
+            ContextMenu.onRequested: (position) => delegateItem.openContextMenu()
 
-            contentItem: RowLayout{
+            contentItem: RowLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 KTreeView.TreeViewDecoration {
                     Layout.fillHeight: true
                     Layout.topMargin: -delegateItem.topPadding
                     Layout.bottomMargin: -delegateItem.bottomPadding
-
 
                     model: notesProxyModel
                     parentDelegate: delegateItem
@@ -802,12 +1159,27 @@ Kirigami.ScrollablePage {
                     kDescendantExpanded: delegateItem.kDescendantExpanded
                 }
 
-                // Kirigami.Icon {
-                //     source: delegateItem.kDescendantExpandable || delegateItem.isFolder ? "folder" : "note-symbolic"
-                //     implicitWidth: Kirigami.Units.iconSizes.medium
-                //     implicitHeight: Kirigami.Units.iconSizes.medium
-                //     Layout.alignment: Qt.AlignVCenter
-                // }
+                // Note/folder icon: an emoji, a chosen theme icon, or the default.
+                Item {
+                    Layout.preferredWidth: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    Layout.alignment: delegateItem.compact ? Qt.AlignVCenter : Qt.AlignTop
+                    Layout.topMargin: delegateItem.compact ? 0 : Math.max(0, (renameField.implicitHeight - height) / 2)
+
+                    Label {
+                        anchors.centerIn: parent
+                        visible: delegateItem.noteIconIsEmoji
+                        text: delegateItem.noteIcon
+                        font.pixelSize: Kirigami.Units.iconSizes.small
+                        textFormat: Text.PlainText
+                    }
+                    Kirigami.Icon {
+                        anchors.fill: parent
+                        visible: !delegateItem.noteIconIsEmoji
+                        source: delegateItem.noteIcon.length > 0 ? delegateItem.noteIcon
+                              : (delegateItem.isFolder ? "folder" : "text-markdown")
+                    }
+                }
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -820,83 +1192,149 @@ Kirigami.ScrollablePage {
                         property color textcolor: Kirigami.Theme.textColor
                     }
 
-                    Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.leftMargin: Kirigami.Units.smallSpacing
-                        Layout.preferredHeight: renameField.implicitHeight
-                        verticalAlignment: Text.AlignVCenter
+                        spacing: Kirigami.Units.smallSpacing
 
-                        text: delegateItem.name
-                        elide: Qt.ElideRight
-                        visible: !renameField.enabled
-                        color: delegateItem.isFolder? Kirigami.Theme.disabledTextColor : textcolorItem.textcolor
-                        font.bold: delegateItem.isFolder
-                    }
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Kirigami.Units.smallSpacing
+                            Layout.preferredHeight: delegateItem.compact ? -1 : renameField.implicitHeight
+                            verticalAlignment: Text.AlignVCenter
 
-                    Kirigami.ActionTextField {
-                        id: renameField
-
-                        Layout.fillWidth: true
-                        Layout.leftMargin: Kirigami.Units.smallSpacing
-
-                        text: delegateItem.name
-                        visible: enabled
-                        enabled: false
-                        background.visible: enabled
-                        topPadding: enabled ? Kirigami.Units.smallSpacing : 0
-                        leftPadding: enabled ? Kirigami.Units.smallSpacing : 0
-                        color: textcolorItem.textcolor
-
-                        Keys.onReturnPressed: (event) => {
-                            acceptedAction.trigger();
-                            event.accepted = true;
-                        }
-                        Keys.onEnterPressed: (event) => {
-                            acceptedAction.trigger();
-                            event.accepted = true;
-                        }
-                        Keys.onEscapePressed: (event) => {
-                            renameField.enabled = false;
-                            event.accepted = true;
+                            text: delegateItem.name
+                            elide: Qt.ElideRight
+                            visible: !renameField.enabled
+                            color: textcolorItem.textcolor
+                            font.weight: delegateItem.isFolder ? Font.DemiBold : Font.Normal
                         }
 
-                        rightActions: [
-                            Kirigami.Action {
-                                id: acceptedAction
-                                icon.name: "answer-correct"
-                                enabled: renameField.text.length > 0
-                                visible: renameField.enabled
-                                onTriggered: {
-                                    if (renameField.text === delegateItem.name) {
+                        Kirigami.ActionTextField {
+                            id: renameField
+
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Kirigami.Units.smallSpacing
+
+                            text: delegateItem.name
+                            visible: enabled
+                            enabled: false
+                            background.visible: enabled
+                            topPadding: enabled ? Kirigami.Units.smallSpacing : 0
+                            leftPadding: enabled ? Kirigami.Units.smallSpacing : 0
+                            color: textcolorItem.textcolor
+
+                            Keys.onReturnPressed: (event) => {
+                                acceptedAction.trigger();
+                                event.accepted = true;
+                            }
+                            Keys.onEnterPressed: (event) => {
+                                acceptedAction.trigger();
+                                event.accepted = true;
+                            }
+                            Keys.onEscapePressed: (event) => {
+                                renameField.enabled = false;
+                                event.accepted = true;
+                            }
+
+                            rightActions: [
+                                Kirigami.Action {
+                                    id: acceptedAction
+                                    icon.name: "answer-correct"
+                                    enabled: renameField.text.length > 0
+                                    visible: renameField.enabled
+                                    onTriggered: {
+                                        if (renameField.text === delegateItem.name) {
+                                            renameField.enabled = false;
+                                            return;
+                                        }
+
+                                        delegateItem.isRenaming = true;
                                         renameField.enabled = false;
-                                        return;
-                                    }
+                                        const oldUrl = delegateItem.fileUrl;
+                                        const renamedUrl = pageNotesModel.renameNote(oldUrl, renameField.text);
 
-                                    delegateItem.isRenaming = true;
-                                    renameField.enabled = false;
-                                    const oldUrl = delegateItem.fileUrl;
-                                    const renamedUrl = pageNotesModel.renameNote(oldUrl, renameField.text);
-
-                                    if (renamedUrl && renamedUrl.toString().length > 0) {
-                                        NavigationController.noteRenamed(oldUrl, renamedUrl);
+                                        if (renamedUrl && renamedUrl.toString().length > 0) {
+                                            NavigationController.noteRenamed(oldUrl, renamedUrl);
+                                        }
+                                        Qt.callLater(() => {
+                                            delegateItem.isRenaming = false;
+                                        });
                                     }
-                                    Qt.callLater(() => {
-                                        delegateItem.isRenaming = false;
-                                    });
+                                }
+                            ]
+                        }
+
+
+                        // Wide layout: tags and created date as columns on the same line.
+                        Row {
+                            visible: delegateItem.wide && delegateItem.showTags && !renameField.enabled
+                            spacing: Kirigami.Units.smallSpacing / 2
+                            Repeater {
+                                model: delegateItem.wide ? delegateItem.tagList.slice(0, 3) : []
+                                delegate: TagChip {
+                                    required property string modelData
+                                    tag: modelData
+                                    selected: FilterState.tags.indexOf(modelData) !== -1
+                                    onClicked: FilterState.toggleTag(modelData)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: KI18n.i18nc("@info:tooltip", "Filter by tag “%1”", modelData)
+                                    ToolTip.delay: Kirigami.Units.toolTipDelay
                                 }
                             }
-                        ]
+                            Label {
+                                visible: delegateItem.tagList.length > 3
+                                text: "+" + (delegateItem.tagList.length - 3)
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+                        }
+
+                        Label {
+                            visible: delegateItem.wide && delegateItem.showCreated && !renameField.enabled
+                            text: delegateItem.createdText
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            horizontalAlignment: Text.AlignRight
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 6
+                            elide: Text.ElideRight
+                        }
                     }
 
-                    Label {
-                        Layout.leftMargin: Kirigami.Units.smallSpacing
-                        text: delegateItem.date ? Qt.formatDateTime(delegateItem.date, Qt.DefaultLocaleShortDate) : ""
-                        // font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        color: Kirigami.Theme.disabledTextColor
+                    // Narrow layout: created date and tags on a fixed-height second line
+                    // (never wraps, so row heights stay stable while filtering).
+                    Row {
+                        visible: !delegateItem.wide && !delegateItem.compact && (delegateItem.showCreated || delegateItem.showTags)
                         Layout.fillWidth: true
+                        Layout.preferredHeight: Math.round(Kirigami.Units.gridUnit * 1.1)
+                        Layout.leftMargin: Kirigami.Units.smallSpacing
                         Layout.bottomMargin: Kirigami.Units.smallSpacing
-                        elide: Qt.ElideRight
-                        visible: text !== "" && !(delegateItem.kDescendantExpandable || delegateItem.isFolder)
+                        spacing: Kirigami.Units.smallSpacing
+                        clip: true
+
+                        Label {
+                            visible: delegateItem.showCreated
+                            text: delegateItem.createdText
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            height: parent.height
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        Repeater {
+                            model: !delegateItem.wide && delegateItem.showTags ? delegateItem.tagList.slice(0, 2) : []
+                            delegate: TagChip {
+                                required property string modelData
+                                tag: modelData
+                                selected: FilterState.tags.indexOf(modelData) !== -1
+                                onClicked: FilterState.toggleTag(modelData)
+                            }
+                        }
+                        Label {
+                            visible: !delegateItem.wide && delegateItem.showTags && delegateItem.tagList.length > 2
+                            text: "+" + (delegateItem.tagList.length - 2)
+                            color: Kirigami.Theme.disabledTextColor
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            height: parent.height
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
 
@@ -904,7 +1342,7 @@ Kirigami.ScrollablePage {
                     id: menuButton
                     text: KI18n.i18nc("@action:button", "Show Menu")
                     icon.name: "overflow-menu"
-                    down: pressed || (menu.opened && menu.delegateItem === delegateItem)
+                    down: pressed || ((menu.opened && menu.delegateItem === delegateItem) || (folderMenu.opened && folderMenu.delegateItem === delegateItem))
                     display: ToolButton.IconOnly
 
                     opacity: {Kirigami.Settings.isMobile ? 1 : delegateItem.hovered || down ? 1 : 0 }
@@ -922,17 +1360,22 @@ Kirigami.ScrollablePage {
 
                     Layout.alignment: Qt.AlignHCenter
                     Layout.margins: 0
+                    // Keep compact rows tight: the hidden menu button must not set the row height.
+                    Layout.maximumHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing : -1
+                    icon.width: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    icon.height: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
 
                     Accessible.role: Accessible.ButtonMenu
                     Accessible.onPressAction: openMenu()
 
-                    ToolTip.visible: hovered && !menu.visible
+                    ToolTip.visible: hovered && !menu.visible && !folderMenu.visible
                     ToolTip.text: text
                     ToolTip.delay: Kirigami.Units.toolTipDelay
 
                     function openMenu(): void {
-                        menu.delegateItem = delegateItem;
-                        menu.popup(this, Qt.point(0, height))
+                        const target = delegateItem.isFolder ? folderMenu : menu;
+                        target.delegateItem = delegateItem;
+                        target.popup(this, Qt.point(0, height))
                     }
                 }
             }
@@ -959,8 +1402,31 @@ Kirigami.ScrollablePage {
             }
 
             highlighted: NavigationController.absoluteNotePath === delegateItem.normPath || delegateItem.isDropTarget
-            topPadding: Kirigami.Units.mediumSpacing
-            bottomPadding: Kirigami.Units.mediumSpacing
+            readonly property real rowPadding: compact ? 1
+                : density === 2 ? Kirigami.Units.largeSpacing
+                : (wide ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing)
+            topPadding: rowPadding
+            bottomPadding: rowPadding
+            // RoundedItemDelegate enforces a 2-gridUnit minimum height; compact rows drop it.
+            implicitHeight: compact
+                ? implicitContentHeight + topPadding + bottomPadding + 2
+                : Math.max(implicitBackgroundHeight + topInset + bottomInset,
+                           implicitContentHeight + topPadding + bottomPadding,
+                           Kirigami.Units.gridUnit * 2)
+            topInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
+            bottomInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
+        }
+
+        // Dropping on empty space moves the note to the top level of the notebook.
+        DropArea {
+            anchors.fill: parent
+            z: -1
+            keys: ["application/x-marknote-note"]
+            onEntered: (drag) => drag.accept(Qt.MoveAction)
+            onDropped: (drop) => {
+                root.moveInto(drop.getDataAsString("application/x-marknote-note"), root.normRoot);
+                drop.acceptProposedAction();
+            }
         }
 
         Kirigami.PlaceholderMessage {
@@ -976,8 +1442,13 @@ Kirigami.ScrollablePage {
             anchors.centerIn: parent
             width: defaultPlaceholderWidth
             icon.name: "edit-none-symbolic"
-            visible: filterModel.count === 0 && root.currentSearchText.length > 0
-            text: KI18n.i18n("No notes matching the search")
+            visible: filterModel.count === 0 && FilterState.active
+            text: KI18n.i18n("No notes match the filter")
+            helpfulAction: Kirigami.Action {
+                icon.name: "edit-clear-all"
+                text: KI18n.i18nc("@action:button", "Clear Filter")
+                onTriggered: FilterState.clear()
+            }
         }
     }
 
@@ -985,6 +1456,8 @@ Kirigami.ScrollablePage {
         id: inlineStatusBar
         parent: root
         hoverTarget: notesList
+        // Sit above the filter bar instead of on top of it.
+        anchors.bottomMargin: filterBar.visible ? filterBar.height : -background.border.width
 
         text: {
             const noteCount = pageNotesModel.totalNotesCount;

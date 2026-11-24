@@ -133,10 +133,87 @@ StatetfulApp.StatefulWindow {
         fromQAction: App.action('open_about_page')
     }
 
+    readonly property bool inWindowMenuBar: !Kirigami.Settings.isMobile && Qt.platform.os !== "osx" && Config.showMenubar
+
+    property AppActions appActions: AppActions {
+        window: root
+    }
+
+    menuBar: Loader {
+        active: root.inWindowMenuBar
+        visible: active
+        sourceComponent: AppMenuBar {
+            actions: root.appActions
+            window: root
+        }
+    }
+
+    // Native/global menu (macOS, Plasma global menu applet) when the in-window one is off.
     Loader {
         id: globalMenuLoader
-        active: !Kirigami.Settings.isMobile
+        active: !Kirigami.Settings.isMobile && !root.inWindowMenuBar
         sourceComponent: GlobalMenuBar {}
+    }
+
+    function findPage(name: string): var {
+        for (let i = 0; i < root.pageStack.items.length; i++) {
+            const page = root.pageStack.items[i];
+            if (page && page.objectName === name) {
+                return page;
+            }
+        }
+        return null;
+    }
+
+    function openNewEntryDialog(type: int, parentPath: string): void {
+        const page = root.findPage("NotesPage");
+        if (page) {
+            page.openNewEntryDialog(type, parentPath);
+        }
+    }
+
+    function openIconPicker(url: url, isFolder: bool, name: string): void {
+        const component = Qt.createComponent("org.kde.marknote", "IconPickerDialog");
+        if (component.status !== Component.Ready) {
+            console.error(component.errorString());
+            return;
+        }
+        component.createObject(root, { targetUrl: url, isFolder: isFolder, targetName: name }).open();
+    }
+
+    function openSyncDialog(path: string, name: string): void {
+        const component = Qt.createComponent("org.kde.marknote", "NotebookSyncDialog");
+        if (component.status !== Component.Ready) {
+            console.error(component.errorString());
+            return;
+        }
+        component.createObject(root, { notebookPath: path, notebookName: name }).open();
+    }
+
+    function openTagEditor(url: url, name: string): void {
+        const component = Qt.createComponent("org.kde.marknote", "TagEditorDialog");
+        if (component.status !== Component.Ready) {
+            console.error(component.errorString());
+            return;
+        }
+        component.createObject(root, { noteUrl: url, noteName: name }).open();
+    }
+
+    Connections {
+        target: SyncManager
+
+        function onFilesChanged(fileUrls: list<url>, filePaths: list<string>): void {
+            NoteMetadata.filesChanged(filePaths);
+        }
+
+        function onSyncFinished(notebookPath: string, ok: bool, summary: string, errors: list<string>): void {
+            const name = notebookPath.split("/").filter(p => p.length > 0).pop() ?? "";
+            if (ok) {
+                root.showPassiveNotification(i18nc("@info:status %1 is a notebook, %2 a summary", "%1: %2", name, summary));
+            } else {
+                root.showPassiveNotification(i18nc("@info:status %1 is a notebook, %2 the first error", "Sync of %1 failed: %2", name, errors.length > 0 ? errors[0] : summary), "long");
+            }
+        }
     }
 
     Connections {
@@ -355,6 +432,7 @@ StatetfulApp.StatefulWindow {
                 contentItem: Item {
                     Controls.ToolButton {
                         id: menuButton
+                        visible: !root.inWindowMenuBar
                         x: Config.expandedSidebar ? Kirigami.Units.smallSpacing : (drawer.normalWidth / 2) - (width / 2)
                         display: Controls.AbstractButton.IconOnly
                         text: i18nc("@action:button", "Show Menu")
@@ -571,10 +649,117 @@ StatetfulApp.StatefulWindow {
                         }
                     }
 
+                    id: notebookList
                     clip: true
                     model: noteBooksModel
                     delegate: NotebookDelegate {
                         model: noteBooksModel
+                    }
+
+                    // Right-click on empty sidebar space; notebooks have their own menu.
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: (eventPoint) => {
+                            const p = eventPoint.position;
+                            if (notebookList.indexAt(p.x + notebookList.contentX, p.y + notebookList.contentY) === -1) {
+                                sidebarMenu.popup();
+                            }
+                        }
+                    }
+                    TapHandler {
+                        acceptedDevices: PointerDevice.TouchScreen
+                        onLongPressed: {
+                            const p = point.position;
+                            if (notebookList.indexAt(p.x + notebookList.contentX, p.y + notebookList.contentY) === -1) {
+                                sidebarMenu.popup();
+                            }
+                        }
+                    }
+
+                    Controls.Menu {
+                        id: sidebarMenu
+
+                        Controls.MenuItem {
+                            text: i18nc("@action:inmenu", "New Notebook…")
+                            icon.name: "list-add"
+                            onTriggered: App.action('add_notebook').trigger()
+                        }
+                        Controls.Menu {
+                            title: i18nc("@title:menu", "Import")
+                            icon.name: "document-import"
+                            Controls.MenuItem {
+                                text: i18nc("@action:inmenu", "Import from KNotes")
+                                icon.name: "knotes-symbolic"
+                                onTriggered: App.action('import_knotes').trigger()
+                            }
+                            Controls.MenuItem {
+                                text: i18nc("@action:inmenu", "Import from Maildir")
+                                icon.name: "folder-mail"
+                                onTriggered: App.action('import_maildir').trigger()
+                            }
+                        }
+                        Controls.MenuSeparator {}
+                        Controls.MenuItem { action: root.appActions.showSidebar }
+                    }
+                }
+            }
+
+            // Tags of the current notebook; clicking one filters the notes list.
+            ColumnLayout {
+                id: sidebarTags
+                readonly property var tags: {
+                    NoteMetadata.revision;
+                    return NavigationController.notebookPath.length > 0
+                        ? NoteMetadata.tagsInNotebook(NavigationController.notebookPath) : [];
+                }
+                visible: Config.expandedSidebar && tags.length > 0
+                Layout.fillWidth: true
+                Layout.maximumHeight: drawer.height * 0.45
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                spacing: 0
+
+                Kirigami.ListSectionHeader {
+                    Layout.fillWidth: true
+                    text: i18nc("@title sidebar section", "Tags")
+                }
+
+                Controls.ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: Math.min(tagListView.contentHeight, drawer.height * 0.4)
+
+                    ListView {
+                        id: tagListView
+                        clip: true
+                        model: sidebarTags.tags
+                        delegate: Delegates.RoundedItemDelegate {
+                            id: tagDelegate
+                            required property var modelData
+                            required property int index
+                            width: ListView.view.width
+                            text: modelData.name
+                            highlighted: FilterState.tags.indexOf(modelData.name) !== -1
+                            onClicked: FilterState.toggleTag(modelData.name)
+                            Accessible.description: highlighted ? i18nc("@info:accessibility", "Filtering by this tag") : ""
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Kirigami.Icon {
+                                    source: "tag"
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                                }
+                                Controls.Label {
+                                    text: tagDelegate.modelData.name
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Controls.Label {
+                                    text: tagDelegate.modelData.count
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+                            }
+                        }
                     }
                 }
             }

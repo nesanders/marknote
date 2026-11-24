@@ -1,0 +1,62 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches:
+      - ci/flatpak-build
+      - ci/flatpak-master
+      - 'feature/**'
+  workflow_dispatch: {}
+
+jobs:
+  flatpak-build:
+    name: Build marknote.flatpak
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder jq
+
+      - name: Read runtime version from manifest
+        id: manifest
+        run: |
+          echo "runtime_version=$(jq -r '."runtime-version"' .flatpak-manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Add Flathub remote
+        run: |
+          flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install KDE SDK and Platform runtimes
+        env:
+          RV: ${{ steps.manifest.outputs.runtime_version }}
+        run: |
+          # Flathub's CDN occasionally times out on summary shards; retry before failing.
+          for attempt in 1 2 3; do
+            flatpak install --user -y --noninteractive flathub "org.kde.Sdk//$RV" "org.kde.Platform//$RV" && exit 0
+            echo "Runtime install attempt $attempt failed; retrying in 60s"
+            sleep 60
+          done
+          exit 1
+
+      - name: Build with flatpak-builder and export to repo
+        run: |
+          flatpak-builder --user --force-clean \
+            --state-dir=.flatpak-builder \
+            --repo=flatpak-repo \
+            build-dir .flatpak-manifest.json
+
+      - name: Build single-file bundle
+        run: |
+          flatpak build-bundle flatpak-repo marknote.flatpak org.kde.marknote
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: marknote-flatpak
+          path: marknote.flatpak
+          if-no-files-found: error

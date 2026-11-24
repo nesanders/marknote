@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "notesmodel.h"
+#include "notemetadata/frontmatter.h"
+#include "notemetadata/notemetadata.h"
 #include <KConfigGroup>
 #include <KDesktopFile>
 #include <KLocalizedString>
@@ -51,7 +53,17 @@ NotesModel::NotesModel(QObject *parent)
     // Set the filesystem model as the source for this proxy
     setSourceModel(m_fsModel);
 
+    connect(NoteMetadata::instance(), &NoteMetadata::metadataChanged, this, [this](const QString &path) {
+        const QModelIndex idx = mapFromSource(m_fsModel->index(path));
+        if (idx.isValid()) {
+            Q_EMIT dataChanged(idx, idx, {Role::Icon, Role::IconIsEmoji, Role::Tags, Role::Created, Role::CreatedText});
+        }
+    });
+
     connect(m_fsModel, &QFileSystemModel::directoryLoaded, this, [this](const QString &path) {
+        if (m_fetchingAll) {
+            fetchAllUnder(path);
+        }
         if (QDir::cleanPath(path) == QDir::cleanPath(m_path)) {
             auto newRoot = m_fsModel->index(m_path);
 
@@ -174,6 +186,27 @@ QVariant NotesModel::data(const QModelIndex &index, int role) const
         return m_color;
     case Role::IsFolder:
         return m_fsModel->fileInfo(srcIndex).isDir();
+    case Role::Created:
+        if (m_fsModel->isDir(srcIndex)) {
+            return FrontMatter::fileCreationTime(m_fsModel->filePath(srcIndex));
+        }
+        return NoteMetadata::instance()->createdForFile(m_fsModel->filePath(srcIndex));
+    case Role::CreatedText: {
+        const QDateTime created = data(index, Role::Created).toDateTime();
+        return NoteMetadata::instance()->formatCreated(created);
+    }
+    case Role::Icon:
+        if (m_fsModel->isDir(srcIndex)) {
+            return NoteMetadata::instance()->folderIconForPath(m_fsModel->filePath(srcIndex));
+        }
+        return NoteMetadata::instance()->metaForFile(m_fsModel->filePath(srcIndex)).icon;
+    case Role::IconIsEmoji:
+        return NoteMetadata::isEmoji(data(index, Role::Icon).toString());
+    case Role::Tags:
+        if (m_fsModel->isDir(srcIndex)) {
+            return QStringList();
+        }
+        return NoteMetadata::instance()->metaForFile(m_fsModel->filePath(srcIndex)).tags;
     }
 
     return QIdentityProxyModel::data(index, role);
@@ -189,12 +222,27 @@ QHash<int, QByteArray> NotesModel::roleNames() const
     roles[Role::Color] = "color";
     roles[Role::Month] = "month";
     roles[Role::IsFolder] = "isFolder";
+    roles[Role::Created] = "created";
+    roles[Role::CreatedText] = "createdText";
+    roles[Role::Icon] = "noteIcon";
+    roles[Role::IconIsEmoji] = "noteIconIsEmoji";
+    roles[Role::Tags] = "tags";
     return roles;
 }
 
 QString NotesModel::addNote(const QString &name)
 {
-    const QString path = m_path + u'/' + name + u".md"_s;
+    return addNoteIn(QUrl::fromLocalFile(m_path), name).isEmpty() ? QString() : name;
+}
+
+QString NotesModel::addNoteIn(const QUrl &parentFolder, const QString &name)
+{
+    const QString parent = parentFolder.isEmpty() ? m_path : parentFolder.toLocalFile();
+    if (parent.isEmpty() || !(parent == m_path || parent.startsWith(m_path + u'/'))) {
+        Q_EMIT errorOccurred(i18nc("@info:status", "Unable to create note outside of the notebook."));
+        return {};
+    }
+    const QString path = parent + u'/' + name + u".md"_s;
 
     if (QFile::exists(path)) {
         Q_EMIT errorOccurred(i18nc("@info:status", "Unable to create note. A note already exists with the same name."));
@@ -208,16 +256,26 @@ QString NotesModel::addNote(const QString &name)
         return {};
     }
 
-    file.write("# " + name.toUtf8());
+    file.write(FrontMatter::join(FrontMatter::initialRaw(QDateTime::currentDateTime()), u"# "_s + name).toUtf8());
     file.close();
 
     updateTotalNotesCount();
-    return name;
+    return path;
 }
 
 QString NotesModel::addFolder(const QString &name)
 {
-    const QString path = m_path + u'/' + name;
+    return addFolderIn(QUrl::fromLocalFile(m_path), name).isEmpty() ? QString() : name;
+}
+
+QString NotesModel::addFolderIn(const QUrl &parentFolder, const QString &name)
+{
+    const QString parent = parentFolder.isEmpty() ? m_path : parentFolder.toLocalFile();
+    if (parent.isEmpty() || !(parent == m_path || parent.startsWith(m_path + u'/'))) {
+        Q_EMIT errorOccurred(i18nc("@info:status", "Unable to create folder outside of the notebook."));
+        return {};
+    }
+    const QString path = parent + u'/' + name;
 
     QDir dir;
     if (!dir.mkdir(path)) {
@@ -230,7 +288,32 @@ QString NotesModel::addFolder(const QString &name)
     }
 
     updateTotalNotesCount();
-    return name;
+    return path;
+}
+
+void NotesModel::fetchAll()
+{
+    m_fetchingAll = true;
+    fetchAllUnder(m_path);
+}
+
+void NotesModel::fetchAllUnder(const QString &path)
+{
+    const QModelIndex srcIdx = m_fsModel->index(path);
+    if (!srcIdx.isValid()) {
+        return;
+    }
+    if (m_fsModel->canFetchMore(srcIdx)) {
+        m_fsModel->fetchMore(srcIdx); // continues in directoryLoaded
+        return;
+    }
+    const int rows = m_fsModel->rowCount(srcIdx);
+    for (int i = 0; i < rows; ++i) {
+        const QModelIndex child = m_fsModel->index(i, 0, srcIdx);
+        if (m_fsModel->isDir(child)) {
+            fetchAllUnder(m_fsModel->filePath(child));
+        }
+    }
 }
 
 void NotesModel::deleteNote(const QUrl &path)
@@ -311,6 +394,20 @@ void NotesModel::duplicateNote(const QUrl &path)
 
     if (!QFile::copy(originalFilePath, finalFilePath)) {
         Q_EMIT errorOccurred(tr("Failed to copy the note file."));
+    } else {
+        // A duplicate is a new note: give it its own id and creation time, keep icon and tags.
+        QFile copy(finalFilePath);
+        if (copy.open(QFile::ReadOnly)) {
+            FrontMatter::Split parts = FrontMatter::split(QString::fromUtf8(copy.readAll()));
+            copy.close();
+            QString raw = FrontMatter::setValue(parts.raw, u"id"_s, FrontMatter::newId());
+            QDateTime now = QDateTime::currentDateTime();
+            now.setTime(QTime(now.time().hour(), now.time().minute(), now.time().second()));
+            raw = FrontMatter::setValue(raw, u"created"_s, QVariant(now));
+            if (copy.open(QFile::WriteOnly | QFile::Truncate)) {
+                copy.write(FrontMatter::join(raw, parts.body).toUtf8());
+            }
+        }
     }
 
     updateTotalNotesCount();
@@ -322,7 +419,7 @@ void NotesModel::copyWholeNote(const QUrl &path)
     if (!file.open(QFile::ReadOnly))
         return;
 
-    const QString markdown = QString::fromUtf8(file.readAll());
+    const QString markdown = FrontMatter::split(QString::fromUtf8(file.readAll())).body;
 
     QTextDocument doc;
     doc.setMarkdown(markdown);
@@ -424,7 +521,8 @@ bool NotesModel::exportToPdf(const QUrl &path, const QUrl &destination)
     if (!file.open(QFile::ReadOnly))
         return false;
 
-    QByteArray data = file.readAll();
+    // Metadata stays out of exports.
+    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
     QPdfWriter writer(destination.toLocalFile());
     writer.setTitle(path.toLocalFile().split(QLatin1Char('/')).constLast());
 
@@ -444,7 +542,8 @@ bool NotesModel::exportToHtml(const QUrl &path, const QUrl &destination)
     if (!file.open(QFile::ReadOnly))
         return false;
 
-    QByteArray data = file.readAll();
+    // Metadata stays out of exports.
+    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
     QByteArray output;
 
 #if __has_include(<md4c-html.h>)
@@ -480,7 +579,8 @@ bool NotesModel::exportToOdt(const QUrl &path, const QUrl &destination)
     if (!file.open(QFile::ReadOnly))
         return false;
 
-    QByteArray data = file.readAll();
+    // Metadata stays out of exports.
+    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
 
     QTextDocument doc;
     doc.setMarkdown(QString::fromUtf8(data));
@@ -503,6 +603,19 @@ bool NotesModel::noteExists(const QString &noteName) const
     }
 
     return QFile::exists(m_path + u'/' + fileName);
+}
+
+bool NotesModel::existsIn(const QUrl &parentFolder, const QString &name, bool isFolder) const
+{
+    const QString parent = parentFolder.isEmpty() ? m_path : parentFolder.toLocalFile();
+    if (parent.isEmpty() || name.isEmpty()) {
+        return false;
+    }
+    QString fileName = name;
+    if (!isFolder && !fileName.endsWith(u".md"_s)) {
+        fileName += u".md"_s;
+    }
+    return QFileInfo::exists(parent + u'/' + fileName);
 }
 
 int NotesModel::totalNotesCount() const

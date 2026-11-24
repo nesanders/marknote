@@ -3,7 +3,12 @@
 
 #include "asyncdocbuilder.h"
 
+#include "notemetadata/frontmatter.h"
+
+#include <QFile>
+#include <QFileInfo>
 #include <QFutureWatcher>
+#include <QTextStream>
 #include <QtConcurrent/QtConcurrentRun>
 
 AsyncDocBuilder::AsyncDocBuilder(QObject *parent)
@@ -30,7 +35,21 @@ void AsyncDocBuilder::parseDocument(QPromise<DocPointer> &promise, const QString
 {
     MD::Parser parser;
 
-    auto doc = parser.parse(filePath, false);
+    QFile file(filePath);
+    if (!file.open(QFile::ReadOnly)) {
+        promise.addResult(parser.parse(filePath, false));
+        return;
+    }
+
+    // Front matter (id, created, icon, tags) is note metadata, not content:
+    // keep it out of the block editor. MDTreeModel::saveToFile puts it back.
+    const FrontMatter::Split parts = FrontMatter::split(QString::fromUtf8(file.readAll()));
+    QByteArray body = parts.body.toUtf8();
+    QTextStream stream(&body);
+    stream.setEncoding(QStringConverter::Utf8);
+
+    const QFileInfo info(filePath);
+    auto doc = parser.parse(stream, info.absolutePath(), info.fileName());
 
     promise.addResult(doc);
 }

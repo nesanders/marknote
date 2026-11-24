@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include "mdtreemodel.h"
+#include "notemetadata/frontmatter.h"
+#include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
 #include <QStringConverter>
 #include <QTextStream>
 #include <QTimer>
@@ -657,6 +660,18 @@ bool MDTreeModel::saveToFile(const QString &filePath)
 
     const QString markdown = toMarkdown();
 
+    // The editor only holds the note body. Re-read the front matter from disk
+    // right before writing, so metadata changed meanwhile (tags, icon set from
+    // the notes list) survives this save. Notes without front matter get one
+    // with a stable id and their creation time.
+    bool present = false;
+    QString raw = FrontMatter::readRawFromFile(filePath, &present);
+    if (!present) {
+        raw = FrontMatter::initialRaw(QFileInfo::exists(filePath) ? FrontMatter::fileCreationTime(filePath) : QDateTime::currentDateTime());
+    } else if (FrontMatter::value(raw, u"id"_s).toString().isEmpty()) {
+        raw = FrontMatter::setValue(raw, u"id"_s, FrontMatter::newId());
+    }
+
     QFile file(filePath);
     if (!file.open(QFile::WriteOnly | QFile::Truncate | QFile::Text)) {
         return false;
@@ -664,7 +679,7 @@ bool MDTreeModel::saveToFile(const QString &filePath)
 
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
-    out << markdown;
+    out << FrontMatter::join(raw, markdown);
     file.close();
 
     return true;

@@ -24,7 +24,7 @@ Item {
 
     property var color: Kirigami.Theme.textColor
     property int padding: 0
-    property int fontSize: Config.editorFont.pointSize
+    property int fontSize: Math.max(4, Math.round(Config.editorFont.pointSize * Config.editorZoom / 100)) // View › Zoom
     property string fontFamily: Config.editorFont.family
 
     property bool editing: false

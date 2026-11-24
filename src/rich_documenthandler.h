@@ -46,6 +46,7 @@ public Q_SLOTS:
     void load(const QUrl &fileUrl) override;
     void saveAs(const QUrl &fileUrl) override;
     void updateFileUrl(const QUrl &newUrl) override;
+    void reloadFiles(const QList<QUrl> &fileUrls) override;
 
 Q_SIGNALS:
     void treeModelChanged();

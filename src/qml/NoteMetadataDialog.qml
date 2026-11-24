@@ -21,11 +21,14 @@ FormCard.FormCardDialog {
     property int mode: NoteMetadataDialog.Mode.Add
     property alias name: nameInput.text
     required property var model
+    /// Folder to create the note/folder in; empty means the notebook root.
+    property url parentFolder
+    /// 0 = note, 1 = folder
+    property int initialType: 0
 
-    readonly property bool duplicateName: mode === NoteMetadataDialog.Mode.Add
-        && nameInput.text.length > 0
-        && !!model
-        && model.noteExists(nameInput.text)
+    readonly property bool duplicateName: mode === NoteMetadataDialog.Mode.Add && nameInput.text.length > 0
+        && !!root.model
+        && root.model.existsIn(root.parentFolder, nameInput.text, typeSelector.selectedIndex === 1)
 
     title: mode === NotebookMetadataDialog.Mode.Add ? KI18n.i18nc("@title:window", "Add New") : KI18n.i18nc("@title:window", "Edit Note")
     standardButtons: Controls.Dialog.Save | Controls.Dialog.Cancel
@@ -38,6 +41,7 @@ FormCard.FormCardDialog {
     }
 
     onOpened: {
+        typeSelector.selectedIndex = root.initialType
         nameInput.forceActiveFocus()
         updateSaveButton()
     }
@@ -58,13 +62,15 @@ FormCard.FormCardDialog {
         }
         if (mode === NoteMetadataDialog.Mode.Add) {
             if (typeSelector.selectedIndex === 0) {
-                const createdName = root.model.addNote(root.name);
-                if (createdName.length === 0) {
+                const createdPath = root.model.addNoteIn(root.parentFolder, root.name);
+                if (createdPath.length === 0) {
                     return;
                 }
-                NavigationController.notePath = createdName + '.md';
+                let notebookRoot = root.model.path;
+                if (!notebookRoot.endsWith("/")) notebookRoot += "/";
+                NavigationController.notePath = createdPath.startsWith(notebookRoot) ? createdPath.substring(notebookRoot.length) : root.name + '.md';
             } else if (typeSelector.selectedIndex === 1) {
-                const createdName = root.model.addFolder(root.name);
+                root.model.addFolderIn(root.parentFolder, root.name);
             }
         }
 

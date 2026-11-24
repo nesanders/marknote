@@ -29,6 +29,11 @@ public:
         Name,
         Color,
         IsFolder,
+        Created, ///< QDateTime: front matter "created", else file birth time
+        CreatedText, ///< localized "Today at 09:12" / short date
+        Icon, ///< emoji or icon theme name ("" when unset)
+        IconIsEmoji,
+        Tags, ///< QStringList
     };
     Q_ENUM(Role)
 
@@ -90,6 +95,11 @@ public:
 
     Q_INVOKABLE QString addNote(const QString &name);
     Q_INVOKABLE QString addFolder(const QString &name);
+    /// Create a note/folder inside @p parentFolder (a folder of this notebook). Returns the new path.
+    Q_INVOKABLE QString addNoteIn(const QUrl &parentFolder, const QString &name);
+    Q_INVOKABLE QString addFolderIn(const QUrl &parentFolder, const QString &name);
+    /// Load every folder of the notebook so filtering can see notes in collapsed folders.
+    Q_INVOKABLE void fetchAll();
 
     Q_INVOKABLE void deleteNote(const QUrl &path);
     Q_INVOKABLE void deleteFolder(const QUrl &path);
@@ -113,6 +123,8 @@ public:
     Q_INVOKABLE bool exportToOdt(const QUrl &path, const QUrl &destination);
 
     Q_INVOKABLE bool noteExists(const QString &noteName) const;
+    /// Whether a note (or folder) named @p name exists in @p parentFolder (notebook root when empty).
+    Q_INVOKABLE bool existsIn(const QUrl &parentFolder, const QString &name, bool isFolder) const;
 
     QString path() const;
 
@@ -138,6 +150,8 @@ Q_SIGNALS:
 
 private:
     void updateColor();
+    void fetchAllUnder(const QString &path);
+    bool m_fetchingAll = false;
 
     QFileSystemModel *m_fsModel;
     QModelIndex m_rootIndex;
