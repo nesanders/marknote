@@ -102,7 +102,8 @@ folder.
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and
    enable the **Google Drive API** (*APIs & Services › Library*).
 2. *APIs & Services › OAuth consent screen*: user type **External**, fill in the app name
-   and your e-mail. Add the scope `…/auth/drive.file`. Then set the publishing status to
+   and your e-mail. Add the scope `https://www.googleapis.com/auth/drive.file` (the full URL; the console
+   lists it as `…/auth/drive.file`). Then set the publishing status to
    **In production**: while it is in *Testing*, Google expires the sign-in after 7 days.
    (`drive.file` is a non-sensitive scope, so no Google review is needed; the consent page
    says the app is unverified until you verify it.)

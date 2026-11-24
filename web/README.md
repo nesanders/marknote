@@ -74,7 +74,7 @@ different project would see an empty Drive.
 1. [Google Cloud console](https://console.cloud.google.com/) › your Marknote project.
    (No project yet: create one, enable the **Google Drive API**, and set up the
    **OAuth consent screen** as described in the main README: External, scope
-   `…/auth/drive.file`, publishing status **In production**.)
+   `https://www.googleapis.com/auth/drive.file` (full URL), publishing status **In production**.)
 2. *APIs & Services › Credentials › Create credentials › OAuth client ID* ›
    **Web application**.
 3. Add where the app runs (exact values; the app's first screen shows them too):
