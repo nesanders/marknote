@@ -5,6 +5,7 @@
 
 #include "googledrivebackend.h"
 #include "localfolderbackend.h"
+#include "vaults.h"
 
 #include <marknotesettings.h>
 
@@ -340,9 +341,15 @@ void SyncManager::startNext()
     const QString statePath = statePathFor(path, destination, target);
     auto result = std::make_shared<SyncResult>();
     QPointer<SyncManager> self(this);
-    QThread *thread = QThread::create([path, statePath, makeBackend, result, self]() {
+    Vaults *vaults = Vaults::instance(); // created here, on the main thread
+    const bool purge = readConfig(path).value(u"purgeReadable"_s).toBool();
+    QThread *thread = QThread::create([path, statePath, makeBackend, result, self, vaults, purge]() {
         std::unique_ptr<RemoteBackend> backend = makeBackend();
         SyncEngine engine(path, backend.get(), statePath);
+        engine.setKeyProvider([vaults, path]() {
+            return vaults->peekKey(path);
+        });
+        engine.setPurgeReadable(purge);
         *result = engine.run([self](const QString &message) {
             QMetaObject::invokeMethod(qApp, [self, message]() {
                 if (self) {
@@ -386,9 +393,18 @@ void SyncManager::finished(const QString &notebookPath, const SyncResult &result
 
     QJsonObject json = readConfig(notebookPath);
     json[u"lastSync"_s] = QDateTime::currentDateTime().toString(Qt::ISODate);
-    json[u"lastOk"_s] = result.ok();
     json[u"lastSummary"_s] = summary;
-    json[u"lastErrors"_s] = QJsonArray::fromStringList(result.errors.mid(0, 20));
+    QStringList errors = result.errors;
+    if (!result.heldBack.isEmpty()) {
+        errors.prepend(i18np("1 note was not sent: it is not encrypted yet and the notebook is locked. Unlock the notebook to sync it.",
+                             "%1 notes were not sent: they are not encrypted yet and the notebook is locked. Unlock the notebook to sync them.",
+                             result.heldBack.size()));
+    }
+    json[u"lastOk"_s] = errors.isEmpty();
+    json[u"lastErrors"_s] = QJsonArray::fromStringList(errors.mid(0, 20));
+    if (json.value(u"purgeReadable"_s).toBool() && result.ok() && result.heldBack.isEmpty()) {
+        json.remove(u"purgeReadable"_s); // done
+    }
     writeConfig(notebookPath, json);
     record(notebookPath, result);
     const bool background = m_background.remove(notebookPath);
@@ -414,7 +430,7 @@ void SyncManager::finished(const QString &notebookPath, const SyncResult &result
     m_progress.clear();
     Q_EMIT runningChanged();
     Q_EMIT progressChanged();
-    Q_EMIT syncFinished(notebookPath, result.ok(), summary, result.errors, background, received);
+    Q_EMIT syncFinished(notebookPath, errors.isEmpty(), summary, errors, background, received);
     startNext();
 }
 
@@ -466,6 +482,19 @@ bool isNote(const QString &path)
     return path.endsWith(u".md"_s);
 }
 } // namespace
+
+void SyncManager::purgeReadableCopies(const QString &notebookPath)
+{
+    const QString path = cleanNotebookPath(notebookPath);
+    QDir(path + u"/.marknote/trash"_s).removeRecursively();
+    if (settings(path).value(u"destination"_s).toString() == u"none"_s) {
+        return;
+    }
+    QJsonObject json = readConfig(path);
+    json[u"purgeReadable"_s] = true;
+    writeConfig(path, json);
+    syncNow(path);
+}
 
 QString SyncManager::activityPath(const QString &notebookPath)
 {

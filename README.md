@@ -131,6 +131,12 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   minutes (*Settings › Lock Encrypted Notebooks After*).
   Change the password or remove encryption from the notebook menu.
 - Moving a note between an encrypted and a plain notebook encrypts or decrypts it.
+- Encrypting a notebook that already syncs: the encrypted notes replace the readable ones
+  on the next sync, and a checkbox (on by default) also deletes the readable copies left
+  behind: earlier versions on Google Drive, this notebook's notes in the Drive trash, and
+  deleted notes kept on this computer. The dialog says what stays readable if you keep them.
+- Sync never uploads an unencrypted note into an encrypted notebook: one written by a
+  device that did not know yet is encrypted first, or held back while the notebook is locked.
 - Synced notebooks stay encrypted on Google Drive; the web app unlocks and edits them
   too (encrypting a notebook or changing its password is desktop-only for now).
 

@@ -121,4 +121,26 @@ bool LocalFolderBackend::remove(const RemoteFile &file, QString *error)
     return true;
 }
 
+bool LocalFolderBackend::emptyTrash(int *deleted, QString *error)
+{
+    QDir trash(m_root + u"/.marknote/trash"_s);
+    if (!trash.exists()) {
+        return true;
+    }
+    int n = 0;
+    QDirIterator it(trash.path(), QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        it.next();
+        ++n;
+    }
+    if (!trash.removeRecursively()) {
+        *error = u"Cannot empty the trash of the sync folder"_s;
+        return false;
+    }
+    if (deleted) {
+        *deleted += n;
+    }
+    return true;
+}
+
 } // namespace Sync

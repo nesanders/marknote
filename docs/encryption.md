@@ -98,6 +98,18 @@ Marknote encrypts it the next time it is saved.
   the app quits, or the auto-lock timeout passes.
 - Encrypting a notebook encrypts every note in place; removing encryption
   decrypts them and deletes `vault.json`. Both need the notebook unlocked.
+- **Sync never uploads a plain note into an encrypted notebook.** A plain
+  note found there (written by a device that did not know yet, or another
+  tool) is encrypted before it is sent while the notebook is unlocked, and
+  held back while it is locked; the web app does the same with its offline
+  queue.
+- Encrypting a synced notebook can **delete the readable copies** Marknote can
+  reach (a choice in the dialog, on by default): earlier versions of each note
+  at the destination (Google Drive's version history), this notebook's files
+  in the destination's trash, and this device's `.marknote/trash`. Kept, the
+  earlier Drive versions stay readable for up to 30 days and trashed notes until
+  the trash is emptied. Other devices keep their readable copies until they
+  sync; version history kept by other tools (e.g. Nextcloud) is not touched.
 
 ## Clients
 

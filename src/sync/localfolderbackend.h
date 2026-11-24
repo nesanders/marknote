@@ -24,6 +24,7 @@ public:
     bool upload(const QString &path, const QByteArray &data, const RemoteFile *existing, RemoteFile *result, QString *error) override;
     bool createFolder(const QString &path, RemoteFile *result, QString *error) override;
     bool remove(const RemoteFile &file, QString *error) override;
+    bool emptyTrash(int *deleted, QString *error) override;
 
 private:
     QString m_root;

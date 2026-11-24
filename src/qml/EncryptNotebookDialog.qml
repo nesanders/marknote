@@ -21,6 +21,9 @@ Kirigami.Dialog {
     property string error: ""
 
     readonly property int minLength: 8
+    // Where the notebook syncs to: "none", "google" or "folder".
+    readonly property string destination: SyncManager.settings(notebookPath).destination ?? "none"
+    readonly property bool synced: destination !== "none"
     readonly property bool passwordOk: password.text.length >= minLength && password.text === confirm.text
     readonly property string strength: {
         const p = password.text;
@@ -75,6 +78,17 @@ Kirigami.Dialog {
                 if (key.length > 0) {
                     password.text = "";
                     confirm.text = "";
+                    // Replace the readable notes at the destination soon, and
+                    // (if chosen) delete the readable copies left there.
+                    if (root.synced) {
+                        if (purgeCheck.checked) {
+                            SyncManager.purgeReadableCopies(root.notebookPath);
+                        } else {
+                            SyncManager.syncNow(root.notebookPath);
+                        }
+                    } else if (purgeCheck.checked) {
+                        SyncManager.purgeReadableCopies(root.notebookPath);
+                    }
                     // The key gets its own dialog (Kirigami does not rebuild a
                     // dialog's footer when its buttons change).
                     const component = Qt.createComponent("org.kde.marknote", "RecoveryKeyDialog");
@@ -143,6 +157,66 @@ Kirigami.Dialog {
                 wrapMode: Text.Wrap
                 color: Kirigami.Theme.disabledTextColor
                 text: KI18n.i18nc("@info", "Every device that syncs this notebook will ask for this password. Without it, or the recovery key shown next, nobody (not even you) can read the notes again.")
+            }
+
+            // Readable copies that encrypting the notes in place does not reach.
+            Kirigami.Separator {
+                Layout.fillWidth: true
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+                wrapMode: Text.Wrap
+                text: root.destination === "google"
+                    ? KI18n.i18nc("@info", "This notebook syncs to <b>Google Drive</b>. On the next sync the encrypted notes replace the readable ones there, but Google Drive keeps the <b>earlier versions</b> of each note (for up to 30 days) and notes deleted before now stay in its <b>trash</b> until it is emptied.")
+                    : root.destination === "folder"
+                    ? KI18n.i18nc("@info", "This notebook syncs to another folder. On the next sync the encrypted notes replace the readable ones there, but notes deleted before now stay in that folder's Marknote trash.")
+                    : KI18n.i18nc("@info", "Notes that sync deleted earlier are kept readable in this notebook's trash folder (.marknote/trash).")
+            }
+            Controls.CheckBox {
+                id: purgeCheck
+                Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 27
+                checked: true
+                enabled: !root.busy
+                text: root.destination === "google"
+                    ? KI18n.i18nc("@option:check", "Delete the readable copies: earlier versions on Google Drive, this notebook's notes in the Google Drive trash, and deleted notes kept on this computer")
+                    : root.synced
+                    ? KI18n.i18nc("@option:check", "Delete the readable copies: deleted notes kept in the sync folder and on this computer")
+                    : KI18n.i18nc("@option:check", "Delete the readable copies of deleted notes kept on this computer")
+                contentItem: Controls.Label {
+                    width: purgeCheck.availableWidth
+                    leftPadding: purgeCheck.indicator.width + purgeCheck.spacing
+                    text: purgeCheck.text
+                    wrapMode: Text.Wrap
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            Controls.Label {
+                Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+                wrapMode: Text.Wrap
+                font: Kirigami.Theme.smallFont
+                color: purgeCheck.checked ? Kirigami.Theme.disabledTextColor : Kirigami.Theme.neutralTextColor
+                text: purgeCheck.checked
+                    ? (root.destination === "google"
+                       ? KI18n.i18nc("@info", "You cannot go back to an earlier version of these notes afterwards. Other files in your Google Drive and its trash are not touched.")
+                       : KI18n.i18nc("@info", "Deleted notes can then no longer be restored."))
+                    : (root.destination === "google"
+                       ? KI18n.i18nc("@info", "If you keep them, anyone with access to your Google Drive can read the earlier versions for up to 30 days, and the deleted notes until the trash is emptied (Google empties it after 30 days).")
+                       : KI18n.i18nc("@info", "If you keep them, the deleted notes stay readable to anyone with access to these files until you empty the trash folder."))
+            }
+            Controls.Label {
+                visible: root.synced
+                Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 27
+                wrapMode: Text.Wrap
+                font: Kirigami.Theme.smallFont
+                color: Kirigami.Theme.disabledTextColor
+                text: root.destination === "folder"
+                    ? KI18n.i18nc("@info", "Other devices keep their readable copies until they sync once. Version history kept by another tool (for example Nextcloud) is not deleted by Marknote.")
+                    : KI18n.i18nc("@info", "Other devices keep their readable copies until they sync once; the web app replaces its copies when it next refreshes the notebook.")
             }
 
             Kirigami.InlineMessage {

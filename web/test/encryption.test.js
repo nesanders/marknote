@@ -107,3 +107,40 @@ test('auto-lock after idle time', async () => {
     lib.autoLock(15);
     assert.ok(lib.locked);
 });
+
+test('an edit queued offline before the notebook was encrypted elsewhere is never uploaded in plain text', async () => {
+    const drive = seedDemo(new FakeDrive());
+    const store = new MemoryStore();
+    const lib = new Library({ drive, store });
+    await lib.loadNotebooks();
+    const personal = lib.notebooks.find((n) => n.name === 'Personal');
+    await lib.openNotebook(personal);
+    const recipes = notes(lib).find((n) => n.title === 'Recipes');
+    const real = { getMeta: drive.getMeta, updateFile: drive.updateFile };
+    drive.getMeta = drive.updateFile = async () => {
+        throw new OfflineError('offline');
+    };
+    assert.deepEqual(await lib.saveNote(recipes.id, '# Recipes\n\nOffline secret\n'), { queued: true });
+
+    // Meanwhile the desktop encrypts the notebook.
+    Object.assign(drive, real);
+    const { vault, key } = await V.createVault(PASSWORD);
+    const dot = await drive.createFolder(personal.id, '.marknote');
+    await drive.createFile(dot.id, 'vault.json', JSON.stringify(vault), 'application/json');
+    for (const f of await drive.listTree(personal.id)) {
+        if (!f.isFolder && f.name.endsWith('.md')) await drive.updateFile(f.id, await V.encryptNote(await drive.getText(f.id), key));
+    }
+
+    // Back online, locked: the edit stays queued, nothing readable goes up.
+    await lib.flushOutbox();
+    assert.equal(lib.pending, 1);
+    assert.ok(!(await drive.getText(recipes.id)).includes('Offline secret'));
+
+    // Unlocked: it goes up encrypted (as a conflict copy: Drive changed meanwhile).
+    assert.ok(await lib.unlock(PASSWORD));
+    await lib.flushOutbox();
+    assert.equal(lib.pending, 0);
+    for (const f of await drive.listTree(personal.id)) {
+        if (!f.isFolder && f.name.endsWith('.md')) assert.ok(!(await drive.getText(f.id)).includes('Offline secret'), f.name);
+    }
+});

@@ -6,6 +6,7 @@
 
 #include "../sync/googledrivebackend.h"
 #include "../sync/syncengine.h"
+#include "../crypto/vaults.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -37,6 +38,7 @@ struct Node {
     QString parent;
     QByteArray content;
     bool trashed = false;
+    QList<QByteArray> oldVersions; ///< Drive's version history, oldest first
 };
 }
 
@@ -48,6 +50,7 @@ public:
     int pageSize = 2; // small, to exercise nextPageToken
     int unauthorizedCount = 0;
     bool rejectUploads = false;
+    QStringList deletedRevisions; ///< "fileId/revisionId"
     QHttpServer server;
     QTcpServer *tcp = new QTcpServer;
 
@@ -57,12 +60,45 @@ public:
         server.route(u"/drive/v3/files"_s, Method::Get | Method::Post, [this](const QHttpServerRequest &r) {
             return guard(r) ? (r.method() == Method::Get ? list(r) : createFolder(r)) : unauthorized();
         });
-        server.route(u"/drive/v3/files/<arg>"_s, Method::Get | Method::Patch, [this](const QString &id, const QHttpServerRequest &r) {
+        server.route(u"/drive/v3/files/<arg>/revisions"_s, Method::Get, [this](const QString &id, const QHttpServerRequest &r) {
+            if (!guard(r)) {
+                return unauthorized();
+            }
+            QJsonArray revisions;
+            for (int i = 0; i < nodes[id].oldVersions.size(); ++i) {
+                revisions.append(QJsonObject{{u"id"_s, QString::number(i)}});
+            }
+            revisions.append(QJsonObject{{u"id"_s, u"head"_s}});
+            return QHttpServerResponse(QJsonObject{{u"revisions"_s, revisions}});
+        });
+        server.route(u"/drive/v3/files/<arg>/revisions/<arg>"_s, Method::Delete, [this](const QString &id, const QString &rev, const QHttpServerRequest &r) {
+            if (!guard(r)) {
+                return unauthorized();
+            }
+            if (rev == u"head"_s) {
+                return QHttpServerResponse(QHttpServerResponse::StatusCode::BadRequest); // Drive refuses this too
+            }
+            deletedRevisions << id + u'/' + rev;
+            return QHttpServerResponse(QHttpServerResponse::StatusCode::NoContent);
+        });
+        server.route(u"/drive/v3/files/<arg>"_s, Method::Get | Method::Patch | Method::Delete, [this](const QString &id, const QHttpServerRequest &r) {
             if (!guard(r)) {
                 return unauthorized();
             }
             if (!nodes.contains(id)) {
                 return QHttpServerResponse(QHttpServerResponse::StatusCode::NotFound);
+            }
+            if (r.method() == Method::Delete) {
+                std::function<void(const QString &)> drop = [&](const QString &n) {
+                    for (const QString &child : nodes.keys()) {
+                        if (nodes[child].parent == n) {
+                            drop(child);
+                        }
+                    }
+                    nodes.remove(n);
+                };
+                drop(id);
+                return QHttpServerResponse(QHttpServerResponse::StatusCode::NoContent);
             }
             if (r.method() == Method::Get) {
                 return QHttpServerResponse("application/octet-stream"_ba, nodes[id].content);
@@ -87,6 +123,7 @@ public:
             if (!guard(r)) {
                 return unauthorized();
             }
+            nodes[id].oldVersions << nodes[id].content;
             nodes[id].content = r.body();
             return QHttpServerResponse(meta(id));
         });
@@ -138,6 +175,7 @@ public:
         const QString q = query.queryItemValue(u"q"_s, QUrl::FullyDecoded);
         static const QRegularExpression byName(u"^name = '(.*)' and '(.*)' in parents and mimeType = '(.*)' and trashed = false$"_s);
         static const QRegularExpression byParent(u"^'(.*)' in parents and trashed = false$"_s);
+        static const QRegularExpression trashedIn(u"^'(.*)' in parents and trashed = true$"_s);
         QStringList ids;
         if (const auto m = byName.match(q); m.hasMatch()) {
             for (auto it = nodes.cbegin(); it != nodes.cend(); ++it) {
@@ -148,6 +186,12 @@ public:
         } else if (const auto m = byParent.match(q); m.hasMatch()) {
             for (auto it = nodes.cbegin(); it != nodes.cend(); ++it) {
                 if (!it->trashed && it->parent == m.captured(1)) {
+                    ids << it.key();
+                }
+            }
+        } else if (const auto m = trashedIn.match(q); m.hasMatch()) {
+            for (auto it = nodes.cbegin(); it != nodes.cend(); ++it) {
+                if (it->trashed && it->parent == m.captured(1)) {
                     ids << it.key();
                 }
             }
@@ -257,11 +301,15 @@ class GoogleDriveTest : public QObject
         return f.open(QFile::ReadOnly) ? f.readAll() : QByteArray();
     }
 
-    SyncResult sync(FakeDrive &drive, const QString &device, GoogleDriveBackend **backendOut = nullptr)
+    SyncResult sync(FakeDrive &drive, const QString &device, GoogleDriveBackend **backendOut = nullptr, bool purge = false)
     {
         auto *backend = new GoogleDriveBackend(u"Marknote/Projects"_s, tokens(), drive.base());
         backend->setTimeout(5000);
         SyncEngine engine(device, backend, device + u"/.marknote/sync/gdrive.json"_s);
+        engine.setKeyProvider([device]() {
+            return Vaults::instance()->peekKey(device);
+        });
+        engine.setPurgeReadable(purge);
         SyncResult r = engine.run();
         if (backendOut) {
             *backendOut = backend;
@@ -328,6 +376,70 @@ private Q_SLOTS:
         QVERIFY(!QFile::exists(a + u"/Folder/Deep/Inner.md"_s));
         QCOMPARE(sync(drive, a).changes(), 0);
         QCOMPARE(sync(drive, b).changes(), 0);
+    }
+
+    void testEncryptingASyncedNotebook()
+    {
+        FakeDrive drive;
+        const QString a = m_tmp.filePath(u"enc/a"_s), b = m_tmp.filePath(u"enc/b"_s);
+        write(a + u"/Diary.md"_s, "# Diary\n\nsecret one\n");
+        write(a + u"/Old.md"_s, "# Old\n\nsecret old\n");
+        QDir().mkpath(b);
+        QVERIFY(sync(drive, a).ok());
+        QVERIFY(sync(drive, b).ok());
+        // History on Drive: an edit (old version kept) and a deletion (in the trash).
+        write(a + u"/Diary.md"_s, "# Diary\n\nsecret two\n");
+        QFile::remove(a + u"/Old.md"_s);
+        QVERIFY(sync(drive, a).ok());
+
+        auto plaintextOnDrive = [&drive]() {
+            QStringList found;
+            for (auto it = drive.nodes.cbegin(); it != drive.nodes.cend(); ++it) {
+                QList<QByteArray> versions = it->oldVersions;
+                for (int i = 0; i < versions.size(); ++i) {
+                    if (drive.deletedRevisions.contains(it.key() + u'/' + QString::number(i))) {
+                        versions[i].clear();
+                    }
+                }
+                versions << it->content;
+                for (const QByteArray &v : std::as_const(versions)) {
+                    if (v.contains("secret")) {
+                        found << it->name;
+                    }
+                }
+            }
+            return found;
+        };
+        QVERIFY(!plaintextOnDrive().isEmpty());
+
+        // Encrypt on A, then sync with "delete readable copies".
+        QVERIFY(!Vaults::instance()->encryptNotebook(a, u"hunter22"_s).isEmpty());
+        GoogleDriveBackend *backend = nullptr;
+        SyncResult r = sync(drive, a, &backend, true);
+        delete backend;
+        QVERIFY2(r.ok(), qPrintable(r.errors.join(u"; "_s)));
+        QVERIFY(r.oldVersionsDeleted >= 2);
+        QCOMPARE(r.trashDeleted, 1);
+        QCOMPARE(plaintextOnDrive(), QStringList());
+
+        // B still has a plain copy and edits it before it learns of the
+        // encryption. Locked: the edit is held back, not uploaded, no conflict copy.
+        write(b + u"/Diary.md"_s, "# Diary\n\nsecret from B\n");
+        r = sync(drive, b);
+        QCOMPARE(r.heldBack, QStringList{u"Diary.md"_s});
+        QCOMPARE(r.conflicts, 0);
+        QVERIFY(QFile::exists(b + u"/.marknote/vault.json"_s));
+        QCOMPARE(plaintextOnDrive(), QStringList());
+
+        // Unlocked: it goes up encrypted (both versions kept, as for any conflict).
+        QVERIFY(Vaults::instance()->unlock(b, u"hunter22"_s));
+        r = sync(drive, b);
+        QVERIFY2(r.ok() && r.heldBack.isEmpty(), qPrintable(r.errors.join(u"; "_s)));
+        QCOMPARE(r.conflicts, 1);
+        QCOMPARE(plaintextOnDrive(), QStringList());
+        QString text;
+        QCOMPARE(NoteIO::read(b + u"/Diary.md"_s, &text), NoteIO::Status::Ok);
+        QVERIFY(text.contains(u"secret from B"_s));
     }
 
     void testListingFollowsPages()

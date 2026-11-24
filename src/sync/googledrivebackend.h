@@ -44,6 +44,8 @@ public:
 
     QString displayName() const override;
     bool listAll(QHash<QString, RemoteFile> *out, QString *error) override;
+    bool deleteOldVersions(const RemoteFile &file, int *deleted, QString *error) override;
+    bool emptyTrash(int *deleted, QString *error) override;
     bool download(const RemoteFile &file, QByteArray *data, QString *error) override;
     bool upload(const QString &path, const QByteArray &data, const RemoteFile *existing, RemoteFile *result, QString *error) override;
     bool createFolder(const QString &path, RemoteFile *result, QString *error) override;
