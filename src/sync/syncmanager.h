@@ -85,6 +85,11 @@ public:
     /// reach (this device's sync trash now; at the destination, earlier
     /// versions and its trash on the next sync), then sync.
     Q_INVOKABLE void purgeReadableCopies(const QString &notebookPath);
+    /// The page of a note, folder or notebook (path or URL) on drive.google.com,
+    /// or "" if its notebook does not sync to Google Drive or it was not synced yet.
+    Q_INVOKABLE QString googleDriveUrl(const QString &path) const;
+    /// Whether the notebook of @p path syncs to Google Drive.
+    Q_INVOKABLE bool syncsToGoogle(const QString &path) const;
     /// Background sync settings changed: restart the timer.
     Q_INVOKABLE void backgroundSettingsChanged();
 

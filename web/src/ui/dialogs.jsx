@@ -92,7 +92,7 @@ export function Menu({ title, items, onClose }) {
         <div class="overlay sheet-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
             <div class="sheet" role="menu" aria-label={title}>
                 {title && <div class="sheet-title">{title}</div>}
-                {items.filter(Boolean).map((it) => it.separator ? <hr /> : (
+                {items.filter((it) => it && !it.hidden).map((it) => it.separator ? <hr /> : (
                     <button role="menuitem" class={'sheet-item' + (it.danger ? ' danger-text' : '')} disabled={it.disabled}
                         onClick={() => {
                             onClose();

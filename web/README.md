@@ -42,6 +42,8 @@ nothing is saved).
   a note, then drag (hold and release opens its menu).
 - **Manual order** (Settings › Sort notes › Manual): drag a note above or below another;
   the order is the same as on the desktop.
+- **Show in Google Drive** on notes, folders and notebooks opens them on drive.google.com,
+  to share them with Google's own Share dialog.
 - New note / folder, rename, move, delete (to the Drive trash), set icon, edit tags,
   new notebook.
 - **Never overwrites another device's edit.** A note is only saved over the version

@@ -53,6 +53,10 @@ public:
 
     /// Id of the notebook's root folder on Drive (after a successful call).
     QString rootFolderId() const;
+    QString rootId() const override
+    {
+        return rootFolderId();
+    }
 
     /// Per-request timeout in milliseconds (default 60 s).
     void setTimeout(int ms);

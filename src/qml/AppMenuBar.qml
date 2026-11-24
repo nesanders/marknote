@@ -183,6 +183,11 @@ Controls.MenuBar {
         Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.duplicateNote }
         Controls.MenuItem { action: root.actions.copyNote }
+        Controls.MenuItem {
+            action: root.actions.showInGoogleDrive
+            visible: action.visible
+            height: visible ? implicitHeight : 0
+        }
         Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.deleteNote }
     }

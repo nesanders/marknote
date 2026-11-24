@@ -426,6 +426,13 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
     );
     const move = (item) => setDialog(<MovePicker library={library} item={item} onClose={() => setDialog(null)} />);
 
+    // The file on drive.google.com, where Google's own Share dialog is.
+    const driveUrl = (id, isFolder) => (isFolder ? `https://drive.google.com/drive/folders/${id}` : `https://drive.google.com/file/d/${id}/view`);
+    const showInDrive = (id, isFolder) => ({
+        label: 'Show in Google Drive', icon: 'drive', hidden: DEMO, disabled: id.startsWith('local-') || !library.online,
+        action: () => window.open(driveUrl(id, isFolder), '_blank', 'noopener'),
+    });
+
     const itemMenu = (item) => setDialog(
         <Menu title={item.title} onClose={() => setDialog(null)} items={item.isFolder ? [
             { label: 'New Note Here…', icon: 'plus', action: () => newNote(item.id) },
@@ -434,6 +441,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             { label: 'Rename…', icon: 'rename', action: () => rename(item), disabled: !library.online },
             { label: 'Move…', icon: 'move', action: () => move(item), disabled: !library.online },
             { label: 'Set Icon…', icon: 'smile', action: () => pickIcon(item), disabled: !library.online },
+            showInDrive(item.id, true),
             { separator: true },
             { label: 'Delete Folder…', icon: 'trash', danger: true, action: () => remove(item), disabled: !library.online },
         ] : [
@@ -442,6 +450,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             { label: 'Move…', icon: 'move', action: () => move(item), disabled: !library.online || item.pending },
             { label: 'Set Icon…', icon: 'smile', action: () => pickIcon(item) },
             { label: 'Edit Tags…', icon: 'tag', action: () => editTags(item) },
+            showInDrive(item.id, false),
             { separator: true },
             { label: 'Delete Note…', icon: 'trash', danger: true, action: () => remove(item), disabled: !library.online && !item.id.startsWith('local-') },
         ]} />,
@@ -458,6 +467,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             { label: 'Expand All', icon: 'chevron', action: () => setSettings((s) => ({ ...s, expanded: Object.fromEntries([...library.items.values()].filter((i) => i.isFolder).map((i) => [i.id, true])) })) },
             { label: 'Collapse All', icon: 'back', action: () => setSettings((s) => ({ ...s, expanded: {} })) },
             { label: 'Refresh', icon: 'refresh', action: () => library.refresh().catch((e) => toast(e.message, 'error')) },
+            showInDrive(notebook.id, true),
             ...(library.encrypted ? [
                 { separator: true },
                 library.locked

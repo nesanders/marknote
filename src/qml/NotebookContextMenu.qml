@@ -3,6 +3,7 @@
 
 import QtQuick
 import QtQuick.Controls as Controls
+import org.kde.kirigami as Kirigami
 
 import org.kde.marknote
 import org.kde.ki18n
@@ -55,6 +56,22 @@ Controls.Menu {
     }
 
     Controls.MenuItem {
+        visible: root.visible && SyncManager.syncsToGoogle(root.path)
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Show in Google Drive")
+        icon.name: "folder-gdrive"
+        onTriggered: {
+            const url = SyncManager.googleDriveUrl(root.path);
+            if (url.length > 0) {
+                Qt.openUrlExternally(url);
+            } else {
+                (Controls.ApplicationWindow.window as Kirigami.ApplicationWindow)?.showPassiveNotification(
+                    KI18n.i18nc("@info:status", "Not on Google Drive yet: sync this notebook first."));
+            }
+        }
+    }
+
+        Controls.MenuItem {
         text: KI18n.i18nc("@action:inmenu", "Make Image Links Relative")
         icon.name: "insert-image"
         onTriggered: NoteMetadata.makeImageLinksRelative(root.path)
