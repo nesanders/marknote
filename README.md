@@ -41,7 +41,9 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 **Notes**
 - **Icon or emoji** for any note or folder (emoji search, theme icons, full KDE icon browser).
 - **Tags** on any note, with an autocompleting tag editor (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>).
-- A strip above the editor shows the note's icon, created date and tags.
+- A separate strip above the editor shows the note's icon, created date and tags.
+- **Zoom** notes with <kbd>Ctrl</kbd>+mouse wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>−</kbd>
+  (reset with <kbd>Ctrl</kbd>+<kbd>0</kbd>) or *View › Zoom*; the level is remembered.
 - **Slash menu** (type `/`) grouped into Text / Lists / Blocks, showing each block's
   Markdown shortcut; the *Insert* menu inserts the same blocks.
 

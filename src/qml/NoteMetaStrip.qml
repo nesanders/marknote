@@ -26,7 +26,21 @@ Item {
     readonly property string icon: meta.icon ?? ""
     readonly property var window: Window.window
 
-    implicitHeight: row.implicitHeight + Kirigami.Units.smallSpacing * 2
+    implicitHeight: row.implicitHeight + Kirigami.Units.smallSpacing * 2 + separator.height
+
+    // Its own opaque band with a divider, so it reads as separate from the note.
+    Rectangle {
+        anchors.fill: parent
+        Kirigami.Theme.colorSet: Kirigami.Theme.View
+        Kirigami.Theme.inherit: false
+        color: Kirigami.Theme.backgroundColor
+    }
+    Kirigami.Separator {
+        id: separator
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+    }
 
     RowLayout {
         id: row

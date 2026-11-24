@@ -14,6 +14,8 @@ Fork-only work. Nothing here is pushed to upstream KDE.
 - [x] Filter bar "Contents" toggle (search inside notes), notebooks sidebar
       context menu (New Notebook…), View › Density (compact/normal/comfortable),
       README section with screenshots.
+- [x] Note zoom (Ctrl+wheel, Ctrl +/-/0, View › Zoom); metadata strip is a
+      separate band and note content is clipped below it.
       Design mockup: https://claude.ai/artifact/DJxD2S5s7TPaFCHZj5Lp7L
 
 ## Known gaps / follow-ups

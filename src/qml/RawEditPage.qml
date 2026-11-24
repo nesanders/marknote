@@ -74,7 +74,8 @@ EditPage {
                 }
             }
 
-            font: Config.editorFont
+            font.family: Config.editorFont.family
+            font.pointSize: Math.max(4, Math.round(Config.editorFont.pointSize * Config.editorZoom / 100)) // View › Zoom
 
             implicitWidth: Math.max(contentWidth + leftPadding + rightPadding,
                 implicitBackgroundWidth + leftInset + rightInset)

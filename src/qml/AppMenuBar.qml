@@ -133,6 +133,13 @@ Controls.MenuBar {
         Controls.MenuItem { action: root.actions.expandAll }
         Controls.MenuItem { action: root.actions.collapseAll }
         Controls.MenuSeparator {}
+        Controls.Menu {
+            title: KI18n.i18nc("@title:menu", "Zoom")
+            icon.name: "zoom"
+            Controls.MenuItem { action: root.actions.zoomIn }
+            Controls.MenuItem { action: root.actions.zoomOut }
+            Controls.MenuItem { action: root.actions.zoomReset }
+        }
         Controls.MenuItem { action: root.actions.sourceMode }
         Controls.MenuItem { action: root.actions.fullScreen }
     }

@@ -236,6 +236,51 @@ QtObject {
         onTriggered: FilterState.setSearchContents(!Config.filterSearchContents)
     }
 
+    // Note zoom (View › Zoom, Ctrl +/-/0, Ctrl + mouse wheel)
+
+    function setZoom(percent: int): void {
+        const clamped = Math.max(50, Math.min(300, percent));
+        if (clamped !== Config.editorZoom) {
+            Config.editorZoom = clamped;
+            Config.save();
+        }
+    }
+
+    /// Zoom by whole steps of 10% (positive = in).
+    function zoomBy(steps: int): void {
+        root.setZoom(Math.round(Config.editorZoom / 10) * 10 + steps * 10);
+    }
+
+    property Kirigami.Action zoomIn: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Zoom In")
+        icon.name: "zoom-in"
+        shortcut: StandardKey.ZoomIn
+        enabled: Config.editorZoom < 300
+        onTriggered: root.zoomBy(1)
+    }
+
+    property Kirigami.Action zoomOut: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Zoom Out")
+        icon.name: "zoom-out"
+        shortcut: StandardKey.ZoomOut
+        enabled: Config.editorZoom > 50
+        onTriggered: root.zoomBy(-1)
+    }
+
+    property Kirigami.Action zoomReset: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu %1 is the current zoom percentage", "Reset Zoom (%1%)", Config.editorZoom)
+        icon.name: "zoom-original"
+        shortcut: "Ctrl+0"
+        enabled: Config.editorZoom !== 100
+        onTriggered: root.setZoom(100)
+    }
+
+    // Ctrl+= zooms in too, so Shift is not needed for "+" on most layouts.
+    property Shortcut zoomInAlt: Shortcut {
+        sequence: "Ctrl+="
+        onActivated: root.zoomBy(1)
+    }
+
     property Kirigami.Action expandAll: Kirigami.Action {
         text: KI18n.i18nc("@action:inmenu", "Expand All Folders")
         icon.name: "expand-all"

@@ -13,6 +13,7 @@ import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
 import org.kde.marknote
+import org.kde.marknote.settings
 import org.kde.ki18n
 
 Kirigami.Page {
@@ -703,12 +704,69 @@ Kirigami.Page {
             Layout.fillWidth: true
             visible: !NavigationController.sourceMode && root.document && root.document.fileUrl.toString().length > 0
             noteUrl: root.document ? root.document.fileUrl : ""
+            z: 2
         }
         Loader {
             id: contentLoader
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // Scrolled blocks must stay below the metadata strip, never on top of it.
+            clip: true
             sourceComponent: root.contentComponent
+
+            // Ctrl + mouse wheel zooms the note. Sits above the content so it sees the
+            // wheel event first; without Ctrl the event falls through and scrolls as usual.
+            Item {
+                anchors.fill: parent
+                z: 1000
+
+                WheelHandler {
+                    acceptedModifiers: Qt.ControlModifier
+                    target: null
+                    property real pending: 0
+                    onWheel: (event) => {
+                        pending += event.angleDelta.y;
+                        const steps = Math.trunc(pending / 120);
+                        if (steps !== 0) {
+                            pending -= steps * 120;
+                            root.ApplicationWindow.window.appActions.zoomBy(steps);
+                        }
+                        event.accepted = true;
+                    }
+                }
+            }
+
+            // Brief zoom level indicator.
+            Label {
+                id: zoomIndicator
+                z: 1001
+                anchors.centerIn: parent
+                text: KI18n.i18nc("@info zoom level", "%1%", Config.editorZoom)
+                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.6
+                padding: Kirigami.Units.largeSpacing
+                opacity: 0
+                visible: opacity > 0
+                background: Rectangle {
+                    radius: Kirigami.Units.cornerRadius
+                    color: Kirigami.Theme.backgroundColor
+                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.2)
+                    opacity: 0.95
+                }
+                SequentialAnimation {
+                    id: zoomIndicatorAnimation
+                    PropertyAction { target: zoomIndicator; property: "opacity"; value: 1 }
+                    PauseAnimation { duration: 700 }
+                    NumberAnimation { target: zoomIndicator; property: "opacity"; to: 0; duration: Kirigami.Units.longDuration }
+                }
+                Connections {
+                    target: Config
+                    function onEditorZoomChanged(): void {
+                        if (root.visible) {
+                            zoomIndicatorAnimation.restart();
+                        }
+                    }
+                }
+            }
         }
     }
 

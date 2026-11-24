@@ -38,6 +38,12 @@ SPDX-License-Identifier: LGPL-2.0-or-later
       <label>Filter also matches text inside notes</label>
       <default>false</default>
     </entry>
+    <entry name="editorZoom" type="Int">
+      <label>Editor zoom in percent</label>
+      <default>100</default>
+      <min>50</min>
+      <max>300</max>
+    </entry>
     <entry name="treeDensity" type="Int">
       <label>Notes list density: 0 compact, 1 normal, 2 comfortable</label>
       <default>1</default>

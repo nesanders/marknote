@@ -1363,7 +1363,7 @@ Kirigami.ScrollablePage {
                     // Keep compact rows tight: the hidden menu button must not set the row height.
                     Layout.maximumHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing : -1
                     icon.width: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
-                    icon.height: icon.width
+                    icon.height: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
 
                     Accessible.role: Accessible.ButtonMenu
                     Accessible.onPressAction: openMenu()

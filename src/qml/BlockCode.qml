@@ -23,7 +23,7 @@ BlockTemplate {
     readonly property var text: blockData.text
     property var language: blockData.lang
 
-    property int fontSize: Config.editorFont.pointSize
+    property int fontSize: Math.max(4, Math.round(Config.editorFont.pointSize * Config.editorZoom / 100)) // View › Zoom
 
     readonly property bool isMermaid: MermaidHelper.isMermaid(String(root.language || ""), String(root.text || ""))
     readonly property bool hasCode: String(root.text || "").trim().length > 0
