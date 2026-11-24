@@ -1,0 +1,85 @@
+// SPDX-FileCopyrightText: 2026 Marknote fork contributors
+// SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+
+#pragma once
+
+#include "frontmatter.h"
+
+#include <QDateTime>
+#include <QHash>
+#include <QObject>
+#include <QQmlEngine>
+#include <QUrl>
+#include <QVariant>
+
+#include <functional>
+
+/**
+ * Note and folder metadata: icon/emoji, tags, created date, stable id.
+ *
+ * Notes keep it in YAML front matter (see FrontMatter); folders keep their
+ * icon in the Dolphin-compatible ".directory" file. Reads are cached per file
+ * and invalidated by modification time, so list views can query freely.
+ */
+class NoteMetadata : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+
+    /// Bumped whenever any note's metadata changes; bind to it to refresh.
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
+
+public:
+    static NoteMetadata *instance();
+    static NoteMetadata *create(QQmlEngine *qmlEngine, QJSEngine *jsEngine);
+
+    int revision() const;
+
+    /// Cached metadata for a note file (local path).
+    FrontMatter::Meta metaForFile(const QString &filePath) const;
+    /// Creation time from front matter, else the file's birth/modification time.
+    QDateTime createdForFile(const QString &filePath) const;
+
+    /// {id, created, createdText, icon, isEmoji, tags, title} for a note.
+    Q_INVOKABLE QVariantMap read(const QUrl &note) const;
+
+    Q_INVOKABLE bool setIcon(const QUrl &note, const QString &icon);
+    Q_INVOKABLE bool setTags(const QUrl &note, const QStringList &tags);
+    Q_INVOKABLE bool addTag(const QUrl &note, const QString &tag);
+    Q_INVOKABLE bool removeTag(const QUrl &note, const QString &tag);
+
+    /// Folder icon or emoji ("" when unset).
+    Q_INVOKABLE QString folderIcon(const QUrl &folder) const;
+    QString folderIconForPath(const QString &folderPath) const;
+    Q_INVOKABLE bool setFolderIcon(const QUrl &folder, const QString &icon);
+
+    /// Every tag used in a notebook: [{name, count}], sorted by name.
+    Q_INVOKABLE QVariantList tagsInNotebook(const QString &notebookPath) const;
+
+    /// True when @p icon is an emoji rather than an icon theme name.
+    Q_INVOKABLE static bool isEmoji(const QString &icon);
+
+    /// "Today at 09:12", "Yesterday at …", or a short date.
+    Q_INVOKABLE QString formatCreated(const QDateTime &created) const;
+
+    /// Normalise a user-entered tag: trimmed, no leading '#', spaces → '-'.
+    Q_INVOKABLE static QString normalizeTag(const QString &tag);
+
+Q_SIGNALS:
+    void revisionChanged();
+    void metadataChanged(const QString &path);
+
+private:
+    explicit NoteMetadata(QObject *parent = nullptr);
+    bool editFrontMatter(const QString &filePath, const std::function<QString(const QString &)> &edit);
+    void bump(const QString &path);
+
+    struct CacheEntry {
+        QDateTime modified;
+        qint64 size = -1;
+        FrontMatter::Meta meta;
+    };
+    mutable QHash<QString, CacheEntry> m_cache;
+    int m_revision = 0;
+};

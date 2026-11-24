@@ -17,6 +17,8 @@ target_compile_options(marknote_static PRIVATE
 )
 
 target_include_directories(marknote_static PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/notemetadata
     ${CMAKE_CURRENT_SOURCE_DIR}/mdoptions
     ${CMAKE_CURRENT_SOURCE_DIR}/mdtreemodel
     ${CMAKE_CURRENT_SOURCE_DIR}/commands
@@ -102,6 +104,8 @@ ecm_add_qml_module(marknote_static
         mermaid/mermaidhelper.h mermaid/mermaidhelper.cpp
         mermaid/pele.qrc
         asyncdocbuilder/asyncdocbuilder.h asyncdocbuilder/asyncdocbuilder.cpp
+        notemetadata/frontmatter.h notemetadata/frontmatter.cpp
+        notemetadata/notemetadata.h notemetadata/notemetadata.cpp
         mdoptions/mdoptions.h
         mdtreemodel/treeitem.h mdtreemodel/treeitem.cpp
         mdtreemodel/mdtreemodel.h mdtreemodel/mdtreemodel.cpp

@@ -33,3 +33,9 @@ ecm_add_test(mermaidtest.cpp
     LINK_LIBRARIES marknote_static Qt::Test
     NAME_PREFIX "marknote-"
 )
+
+ecm_add_test(frontmattertest.cpp
+    TEST_NAME frontmattertest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)
