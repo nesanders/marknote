@@ -5,12 +5,14 @@
 #include "notebooksmodel.h"
 #include "notemetadata/imagelinks.h"
 #include "notemetadata/notemetadata.h"
+#include "vaults.h"
 #include <QDebug>
 #include <QDirIterator>
 #include <QFile>
 #include <QStandardPaths>
 
 #include <KConfigGroup>
+#include <KLocalizedString>
 #include <KDesktopFile>
 #include <QFileSystemWatcher>
 
@@ -240,12 +242,34 @@ void NoteBooksModel::moveNote(const QString &noteUri, const QString &notebookPat
         return;
     }
 
+    // Between notebooks with different encryption the note is re-written:
+    // decrypted from the old notebook, encrypted (or not) for the new one.
+    // Both need to be unlocked, so nothing is left unreadable.
+    const QString fromVault = Vaults::notebookOf(notePath);
+    const QString toVault = Vaults::notebookOf(QDir(notebookPath).filePath(fileName));
+    QString plaintext;
+    const bool reencrypt = fromVault != toVault;
+    if (reencrypt) {
+        QString error;
+        if ((!toVault.isEmpty() && Vaults::instance()->isLocked(toVault)) || NoteIO::read(notePath, &plaintext, &error) != NoteIO::Status::Ok) {
+            Vaults::instance()->reportError(i18n("Unlock both notebooks before moving a note between them."));
+            return;
+        }
+    }
+
     // The note's own images go with it; links to other images are rewritten
     // (or the images copied, since they are in another notebook now).
     NoteMetadata::instance()->beginRewrite();
     if (!QFile::rename(notePath, newPath)) {
         qWarning() << "Failed to move note from" << notePath << "to" << newPath;
+        NoteMetadata::instance()->endRewrite({});
         return;
+    }
+    if (reencrypt) {
+        QString error;
+        if (!NoteIO::write(newPath, plaintext, &error)) {
+            qWarning() << "Failed to re-encrypt moved note" << newPath << error;
+        }
     }
     QString oldNotebook;
     if (m_directory) {

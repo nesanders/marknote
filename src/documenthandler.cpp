@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: BSD-3-Clause AND LGPL-2.0-or-later
 
 #include "documenthandler.h"
+#include "vaults.h"
 
 #include <KColorScheme>
 #include <KLocalizedString>
@@ -34,6 +35,29 @@ using namespace Qt::StringLiterals;
 DocumentHandler::DocumentHandler(QObject *parent)
     : QObject(parent)
 {
+    connect(Vaults::instance(), &Vaults::locked, this, &DocumentHandler::dropNotebook);
+}
+
+QList<QUrl> DocumentHandler::heldFiles() const
+{
+    if (m_fileUrl.isEmpty()) {
+        return {};
+    }
+    return {m_fileUrl};
+}
+
+void DocumentHandler::dropNotebook(const QString &notebook)
+{
+    const QString prefix = notebook + u'/';
+    QList<QUrl> inside;
+    for (const QUrl &url : heldFiles()) {
+        if (url.toLocalFile().startsWith(prefix)) {
+            inside << url;
+        }
+    }
+    if (!inside.isEmpty()) {
+        reloadFiles(inside);
+    }
 }
 
 QQuickTextDocument *DocumentHandler::document() const

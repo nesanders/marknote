@@ -115,7 +115,15 @@ export class DriveApi {
                     const isFolder = file.mimeType === FOLDER;
                     if (!isFolder && file.mimeType.startsWith('application/vnd.google-apps.')) continue;
                     const path = f.path ? `${f.path}/${file.name}` : file.name;
-                    if (path === '.marknote' || path.startsWith('.marknote/')) continue;
+                    // App data stays out of the tree, except the encryption vault.
+                    if (path === '.marknote') {
+                        if (isFolder) queue.push({ id: file.id, path });
+                        continue;
+                    }
+                    if (path.startsWith('.marknote/')) {
+                        if (path === '.marknote/vault.json') out.push({ ...file, path, parentId: f.id, isFolder: false });
+                        continue;
+                    }
                     out.push({ ...file, path, parentId: f.id, isFolder });
                     if (isFolder) queue.push({ id: file.id, path });
                 }

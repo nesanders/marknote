@@ -70,6 +70,7 @@ void CommandManager::setModel(MDTreeModel *model)
             if (oldStack) {
                 disconnect(oldStack, &QUndoStack::canUndoChanged, this, &CommandManager::canUndoChanged);
                 disconnect(oldStack, &QUndoStack::canRedoChanged, this, &CommandManager::canRedoChanged);
+                disconnect(oldStack, &QUndoStack::indexChanged, this, &CommandManager::contentChanged);
             }
         }
 
@@ -92,6 +93,7 @@ void CommandManager::setModel(MDTreeModel *model)
             QUndoStack *stack = m_undoStacks.value(m_model);
             connect(stack, &QUndoStack::canUndoChanged, this, &CommandManager::canUndoChanged);
             connect(stack, &QUndoStack::canRedoChanged, this, &CommandManager::canRedoChanged);
+            connect(stack, &QUndoStack::indexChanged, this, &CommandManager::contentChanged);
         }
 
         Q_EMIT canUndoChanged();

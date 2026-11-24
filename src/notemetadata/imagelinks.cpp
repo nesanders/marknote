@@ -3,6 +3,8 @@
 
 #include "imagelinks.h"
 
+#include "crypto/vaults.h"
+
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
@@ -66,21 +68,18 @@ QList<std::pair<qsizetype, qsizetype>> codeRanges(const QString &text)
     return out;
 }
 
+// Through NoteIO: links inside encrypted notes are fixed while unlocked;
+// a locked note is left as it is.
 QString readText(const QString &path, bool *ok)
 {
-    QFile f(path);
-    *ok = f.open(QFile::ReadOnly);
-    return *ok ? QString::fromUtf8(f.readAll()) : QString();
+    QString text;
+    *ok = NoteIO::read(path, &text) == NoteIO::Status::Ok;
+    return text;
 }
 
 bool writeText(const QString &path, const QString &text)
 {
-    QSaveFile f(path);
-    if (!f.open(QFile::WriteOnly)) {
-        return false;
-    }
-    f.write(text.toUtf8());
-    return f.commit();
+    return NoteIO::write(path, text);
 }
 
 QString decodeTarget(QString target)

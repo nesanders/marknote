@@ -6,6 +6,7 @@ import QtQuick.Controls as Controls
 import org.kde.kirigami as Kirigami
 import org.kde.ki18n
 import org.kde.marknote
+import org.kde.marknote.settings
 
 /**
  * The standard in-window KDE menu bar (File, Edit, View, Insert, Note,
@@ -189,6 +190,23 @@ Controls.MenuBar {
         title: KI18n.i18nc("@title:menu", "&Settings")
 
         Controls.MenuItem { action: root.actions.showMenubar }
+        Controls.MenuSeparator {}
+        Controls.MenuItem { action: root.actions.lockAll }
+        Controls.Menu {
+            title: KI18n.i18nc("@title:menu", "Lock Encrypted Notebooks After")
+            Repeater {
+                model: [5, 15, 30, 60, 0]
+                delegate: Controls.MenuItem {
+                    required property int modelData
+                    text: modelData === 0 ? KI18n.i18nc("@action:inmenu auto-lock", "Never (until Marknote quits)")
+                                          : KI18n.i18ncp("@action:inmenu auto-lock", "%1 minute idle", "%1 minutes idle", modelData)
+                    checkable: true
+                    checked: Config.autoLockMinutes === modelData
+                    autoExclusive: true
+                    onTriggered: root.actions.setAutoLock(modelData)
+                }
+            }
+        }
         Controls.MenuSeparator {}
         AppActionItem { actionName: "open_kcommand_bar"; iconName: "new-command-alarm"; shortcutText: "Ctrl+Alt+I" }
         AppActionItem { actionName: "options_configure_keybinding"; iconName: "configure-shortcuts"; shortcutText: "Ctrl+Alt+," }

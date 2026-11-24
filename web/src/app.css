@@ -415,3 +415,12 @@ input.cm-task { width: 1.05em; height: 1.05em; min-height: 0; margin: 0 0.45em 0
     padding: 0.3rem 0.6rem; font-size: 0.9rem; white-space: nowrap; max-width: 80vw;
 }
 .drag-hint { color: var(--muted); font-size: 0.82rem; margin-left: 0.3rem; }
+
+/* Encrypted notebooks */
+.nb-lock { display: inline-flex; color: var(--muted); margin-inline-start: 0.2rem; }
+.locked-note { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 3rem 1rem; text-align: center; color: var(--muted); }
+.locked-note h2 { margin: 0.5rem 0 0; color: var(--text); font-size: 1.15rem; }
+.locked-note .unlock-form { width: min(22rem, 100%); text-align: start; margin-top: 0.75rem; }
+.unlock-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.unlock-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+input.mono { font-family: ui-monospace, 'Noto Sans Mono', monospace; letter-spacing: 0.03em; }

@@ -220,6 +220,19 @@ QtObject {
         onTriggered: root.setSort("sort-created")
     }
 
+    property Kirigami.Action lockAll: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Lock Encrypted Notebooks")
+        icon.name: "object-locked"
+        shortcut: "Ctrl+Shift+L"
+        enabled: Vaults.revision >= 0 && Vaults.hasUnlocked
+        onTriggered: Vaults.lockAll()
+    }
+
+    function setAutoLock(minutes: int): void {
+        Config.autoLockMinutes = minutes;
+        Config.save();
+    }
+
     function setDensity(level: int): void {
         Config.treeDensity = level;
         Config.save();

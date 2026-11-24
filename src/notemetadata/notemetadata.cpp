@@ -4,6 +4,7 @@
 #include "notemetadata.h"
 
 #include "imagelinks.h"
+#include "crypto/vaults.h"
 
 #include <KConfig>
 #include <KConfigGroup>
@@ -33,6 +34,13 @@ const auto emojiKey = "X-Marknote-Emoji";
 NoteMetadata::NoteMetadata(QObject *parent)
     : QObject(parent)
 {
+    // Unlocking or locking a notebook changes what its notes reveal.
+    connect(Vaults::instance(), &Vaults::changed, this, [this]() {
+        m_cache.clear();
+        m_bodyCache.clear();
+        ++m_revision;
+        Q_EMIT revisionChanged();
+    });
 }
 
 NoteMetadata *NoteMetadata::instance()
@@ -66,7 +74,9 @@ FrontMatter::Meta NoteMetadata::metaForFile(const QString &filePath) const
     CacheEntry entry;
     entry.modified = info.lastModified();
     entry.size = info.size();
-    entry.meta = FrontMatter::parse(FrontMatter::readRawFromFile(filePath));
+    // Encrypted notes: their real metadata once unlocked, nothing while locked.
+    const QString text = NoteIO::readText(filePath);
+    entry.meta = FrontMatter::parse(FrontMatter::split(text).raw);
     m_cache.insert(filePath, entry);
     return entry.meta;
 }
@@ -95,12 +105,11 @@ QVariantMap NoteMetadata::read(const QUrl &note) const
 
 bool NoteMetadata::editFrontMatter(const QString &filePath, const std::function<QString(const QString &)> &edit)
 {
-    QFile in(filePath);
-    if (!in.open(QFile::ReadOnly)) {
+    QString text;
+    if (NoteIO::read(filePath, &text) != NoteIO::Status::Ok) {
         return false;
     }
-    const FrontMatter::Split parts = FrontMatter::split(QString::fromUtf8(in.readAll()));
-    in.close();
+    const FrontMatter::Split parts = FrontMatter::split(text);
 
     QString raw = parts.present ? parts.raw : FrontMatter::initialRaw(FrontMatter::fileCreationTime(filePath));
     if (FrontMatter::value(raw, u"id"_s).toString().isEmpty()) {
@@ -108,12 +117,7 @@ bool NoteMetadata::editFrontMatter(const QString &filePath, const std::function<
     }
     raw = edit(raw);
 
-    QSaveFile out(filePath);
-    if (!out.open(QFile::WriteOnly)) {
-        return false;
-    }
-    out.write(FrontMatter::join(raw, parts.body).toUtf8());
-    if (!out.commit()) {
+    if (!NoteIO::write(filePath, FrontMatter::join(raw, parts.body))) {
         return false;
     }
     bump(filePath);
@@ -302,15 +306,14 @@ bool NoteMetadata::noteContains(const QString &filePath, const QString &text) co
     }
     auto it = m_bodyCache.constFind(path);
     if (it == m_bodyCache.constEnd() || it->modified != info.lastModified() || it->size != info.size()) {
-        QFile file(path);
-        if (!file.open(QFile::ReadOnly)) {
-            return false;
+        if (info.size() > 4 * 1024 * 1024) {
+            return false; // a stray huge file must not stall filtering
         }
         BodyEntry entry;
         entry.modified = info.lastModified();
         entry.size = info.size();
-        // Notes are small; cap at 4 MiB so a stray huge file cannot stall filtering.
-        entry.lowerBody = FrontMatter::split(QString::fromUtf8(file.read(4 * 1024 * 1024))).body.toLower();
+        // Locked encrypted notes have no searchable text.
+        entry.lowerBody = FrontMatter::split(NoteIO::readText(path)).body.toLower();
         it = m_bodyCache.insert(path, entry);
     }
     return it->lowerBody.contains(needle);

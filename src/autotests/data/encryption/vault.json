@@ -1,0 +1,19 @@
+{
+    "created": "2026-11-24T14:43:36Z",
+    "format": "marknote-vault",
+    "kdf": {
+        "alg": "argon2id13",
+        "memlimit": 67108864,
+        "opslimit": 3,
+        "salt": "bsv5ZFViXiAW3elMjj+NeA=="
+    },
+    "password": {
+        "key": "ZFrkq+f0gXweFvDBG9K+uekDNvyj50Pc/G//2H3e43xMji6VwwFs8zgZCpGVWkro",
+        "nonce": "d1uZnauv82eyBgu3sFW5BURqWQRzFO4s"
+    },
+    "recovery": {
+        "key": "272MYxREo+BeVE8wMG4UmyBLML2zhBfJH2sfFfdQpSrrTv5oXcFitA4/DegBms/l",
+        "nonce": "O9M5Bum42KI8hV6sbZnsU8j5UA+yqXz0"
+    },
+    "version": 1
+}

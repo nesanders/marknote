@@ -7,6 +7,8 @@ import { renderMarkdown, toggleTask } from '../markdown.js';
 import { enhance } from '../extras.js';
 import { Editor, actions } from './Editor.jsx';
 import { Icon, ItemIcon } from './icons.jsx';
+import { UnlockForm } from './dialogs.jsx';
+import { LockedError } from '../library.js';
 
 const SAVE_DELAY = 1200;
 
@@ -65,10 +67,15 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
     useEffect(() => {
         let alive = true;
         const current = library.text(item.id);
+        setError('');
         if (current !== undefined) {
             if (!pending.current) setText(current);
+        } else if (library.isLockedNote(item.id)) {
+            setText(undefined);
+            setEditing(false);
         } else {
-            library.readNote(item.id).then((t) => alive && setText(t)).catch((e) => alive && setError(e.message));
+            library.readNote(item.id).then((t) => alive && setText(t))
+                .catch((e) => alive && (e instanceof LockedError ? (setText(undefined), setEditing(false)) : setError(e.message)));
         }
         return () => {
             alive = false;
@@ -108,9 +115,11 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
     useEffect(() => {
         const away = () => flush();
         window.addEventListener('pagehide', away);
+        library.addEventListener('before-lock', away);
         document.addEventListener('visibilitychange', away);
         return () => {
             window.removeEventListener('pagehide', away);
+        library.removeEventListener('before-lock', away);
             document.removeEventListener('visibilitychange', away);
             flush();
         };
@@ -158,6 +167,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
         }
     };
 
+    const locked = text === undefined && library.locked;
     const meta = FM.parse(split.raw);
     const created = meta.created ?? item.created;
 
@@ -171,13 +181,13 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
                     <button class={'toggle small' + (live ? '' : ' on')} aria-pressed={!live} title="Show the Markdown source"
                         onClick={() => setLive(!live)}>Source</button>
                 )}
-                <button class={'icon-button' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}
+                <button class={'icon-button' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)} disabled={locked}
                     aria-label={editing ? 'Done editing' : 'Edit note'} title={editing ? 'Done (Esc)' : 'Edit'}>
                     <Icon name={editing ? 'check' : 'edit'} />
                 </button>
                 <button class="icon-button" onClick={onMenu} aria-label="Note actions"><Icon name="menu" /></button>
             </header>
-            <div class="meta-strip">
+            {!locked && <div class="meta-strip">
                 <button class="meta-button" onClick={onIcon} title="Set icon">
                     {item.icon ? <ItemIcon item={item} size={18} /> : <Icon name="smile" size={18} />}
                     <span>{item.icon ? 'Icon' : 'Add Icon'}</span>
@@ -187,9 +197,17 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
                     {meta.tags.map((t) => <span class="chip small">{t}</span>)}
                     <button class="meta-button" onClick={onTags} title="Edit tags"><Icon name="tag" size={16} /><span>{meta.tags.length ? 'Edit' : 'Add Tag'}</span></button>
                 </span>
-            </div>
+            </div>}
             {error && <p class="error pad">{error}</p>}
-            {text === undefined && !error && <p class="hint pad">Loading…</p>}
+            {locked && (
+                <div class="locked-note">
+                    <Icon name="lock" size={48} />
+                    <h2>This note is encrypted</h2>
+                    <p class="hint">Unlock the notebook to read and edit it.</p>
+                    <UnlockForm library={library} />
+                </div>
+            )}
+            {text === undefined && !error && !locked && <p class="hint pad">Loading…</p>}
             {text !== undefined && (editing ? (
                 <>
                     <Editor value={split.body} onChange={onChange} viewRef={viewRef} autoFocus live={live}

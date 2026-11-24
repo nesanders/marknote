@@ -474,6 +474,47 @@ void TreeItem::commitUnparsedMarkdown()
     Q_EMIT dataChanged();
 }
 
+void TreeItem::withUnparsedApplied(const std::function<void()> &fn)
+{
+    struct Swap {
+        QSharedPointer<MD::Block> parent;
+        int row;
+        QSharedPointer<MD::Item> original;
+    };
+    QList<Swap> swaps;
+    QList<TreeItem *> temporary;
+
+    const std::function<void(TreeItem *)> apply = [&](TreeItem *item) {
+        if (!item->m_unparsedMd.isNull() && item->m_parent && item->m_parent->m_item) {
+            auto parentBlock = item->m_parent->m_item.dynamicCast<MD::Block>();
+            const int r = item->row();
+            if (parentBlock && r >= 0 && r < parentBlock->items().size()) {
+                const auto parsed = fromMarkdown(item->m_unparsedMd, item->doc());
+                temporary << parsed;
+                if (!parsed.isEmpty() && parsed[0]->m_item) {
+                    swaps.append({parentBlock, r, parentBlock->items().at(r)});
+                    parentBlock->removeItemAt(r);
+                    parentBlock->insertItem(r, parsed[0]->m_item);
+                }
+            }
+        }
+        for (TreeItem *child : item->m_children) {
+            if (child) {
+                apply(child);
+            }
+        }
+    };
+    apply(this);
+
+    fn();
+
+    for (auto it = swaps.crbegin(); it != swaps.crend(); ++it) {
+        it->parent->removeItemAt(it->row);
+        it->parent->insertItem(it->row, it->original);
+    }
+    qDeleteAll(temporary);
+}
+
 void TreeItem::setUnparsedMarkdownForTable(const QString &text, int row, int col)
 {
     if (m_item->type() != MD::ItemType::Table) {

@@ -6,6 +6,7 @@
 
 #include "mdoptions/mdoptions.h"
 #include <QObject>
+#include <functional>
 #include <QVariant>
 #include <md4qt/doc.h>
 
@@ -62,6 +63,9 @@ public:
     QString unparsedMarkdown() const;
     void clearUnparsedMarkdown();
     void commitUnparsedMarkdown();
+    /// Run fn with text still being edited (not yet parsed) temporarily put
+    /// into the document, so it can be serialized; then put everything back.
+    void withUnparsedApplied(const std::function<void()> &fn);
 
     void setUnparsedMarkdownForTable(const QString &text, int row, int col);
     void clearUnparsedTableMarkdown();

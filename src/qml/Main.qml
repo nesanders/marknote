@@ -200,6 +200,13 @@ StatetfulApp.StatefulWindow {
     }
 
     Connections {
+        target: Vaults
+        function onNotice(message: string): void {
+            root.showPassiveNotification(message, "long");
+        }
+    }
+
+    Connections {
         target: NoteMetadata
         function onStatusMessage(message: string): void {
             root.showPassiveNotification(message, "long");

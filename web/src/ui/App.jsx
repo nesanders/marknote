@@ -4,11 +4,11 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as Auth from '../auth.js';
 import { DriveApi } from '../drive.js';
-import { FakeDrive, seedDemo } from '../fakedrive.js';
+import { FakeDrive, seedDemo, seedEncryptedDemo } from '../fakedrive.js';
 import { Library } from '../library.js';
 import { loadSettings, saveSettings } from '../settings.js';
 import { createStore, MemoryStore } from '../store.js';
-import { ConfirmDialog, Dialog, IconPicker, Menu, MovePicker, PromptDialog, TagEditor } from './dialogs.jsx';
+import { ConfirmDialog, Dialog, IconPicker, Menu, MovePicker, PromptDialog, TagEditor, UnlockDialog } from './dialogs.jsx';
 import { Icon } from './icons.jsx';
 import { NoteView } from './NoteView.jsx';
 import { Tree } from './Tree.jsx';
@@ -159,6 +159,12 @@ function SettingsDialog({ settings, setSettings, library, account, onClose, onSi
                         <option value="name">By name</option><option value="created">Newest first</option><option value="modified">Recently changed</option>
                     </select>
                 </label>
+                <label class="field inline" title="Encrypted notebooks lock themselves when unused for this long"><span>Lock encrypted notebooks after</span>
+                    <select value={settings.autoLockMinutes ?? 15} onChange={(e) => setSettings({ ...settings, autoLockMinutes: Number(e.target.value) })}>
+                        {[5, 15, 30, 60].map((m) => <option value={m}>{m} minutes idle</option>)}
+                        <option value={0}>Never (until the page is closed)</option>
+                    </select>
+                </label>
             </div>
             <label class="check"><input type="checkbox" checked={settings.showTags} onChange={(e) => setSettings({ ...settings, showTags: e.target.checked })} /> Show tags in the list</label>
             <label class="check"><input type="checkbox" checked={settings.showCreated} onChange={(e) => setSettings({ ...settings, showCreated: e.target.checked })} /> Show created date in the list</label>
@@ -213,9 +219,9 @@ function useLibraryRevision(library) {
     useEffect(() => {
         if (!library) return undefined;
         const bump = () => setRev((r) => r + 1);
-        for (const ev of ['notebooks', 'tree', 'status']) library.addEventListener(ev, bump);
+        for (const ev of ['notebooks', 'tree', 'status', 'vault']) library.addEventListener(ev, bump);
         return () => {
-            for (const ev of ['notebooks', 'tree', 'status']) library.removeEventListener(ev, bump);
+            for (const ev of ['notebooks', 'tree', 'status', 'vault']) library.removeEventListener(ev, bump);
         };
     }, [library]);
     return rev;
@@ -343,6 +349,17 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
         return { folders, notes };
     }, [rev, visible]);
 
+    // Encrypted notebooks lock themselves after a while without use.
+    useEffect(() => {
+        const t = setInterval(() => library.autoLock(settings.autoLockMinutes ?? 15), 30000);
+        return () => clearInterval(t);
+    }, [library, settings.autoLockMinutes]);
+
+    const lockNow = () => {
+        library.lock(); // the open note saves its edit first ('before-lock')
+        setEditing(false);
+    };
+
     // Keyboard shortcuts (desktop browsers).
     useEffect(() => {
         const key = (e) => {
@@ -354,6 +371,9 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             } else if (mod && e.key.toLowerCase() === 'n' && notebook) {
                 e.preventDefault();
                 newNote(null);
+            } else if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
+                e.preventDefault();
+                lockNow();
             } else if (e.key === 'Escape' && editing) {
                 setEditing(false);
             }
@@ -438,6 +458,12 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             { label: 'Expand All', icon: 'chevron', action: () => setSettings((s) => ({ ...s, expanded: Object.fromEntries([...library.items.values()].filter((i) => i.isFolder).map((i) => [i.id, true])) })) },
             { label: 'Collapse All', icon: 'back', action: () => setSettings((s) => ({ ...s, expanded: {} })) },
             { label: 'Refresh', icon: 'refresh', action: () => library.refresh().catch((e) => toast(e.message, 'error')) },
+            ...(library.encrypted ? [
+                { separator: true },
+                library.locked
+                    ? { label: 'Unlock…', icon: 'unlock', action: () => setDialog(<UnlockDialog library={library} name={notebook.name} onClose={() => setDialog(null)} />) }
+                    : { label: 'Lock Notebook', icon: 'lock', action: lockNow },
+            ] : []),
         ]} />,
     );
 
@@ -484,6 +510,8 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
                             {nb.dir?.['X-Marknote-Emoji'] ? <span class="emoji">{nb.dir['X-Marknote-Emoji']}</span> : <Icon name="notebook" />}
                         </span>
                         <span class="nb-name">{nb.name}</span>
+                        {nb.encrypted && <span class="nb-lock" title={notebook?.id === nb.id && !library.locked ? 'Encrypted, unlocked' : 'Encrypted'}>
+                            <Icon name={notebook?.id === nb.id && !library.locked ? 'unlock' : 'lock'} size={14} /></span>}
                         {notebook?.id === nb.id && <span class="count">{counts.notes}</span>}
                     </button>
                 ))}
@@ -513,7 +541,12 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             <header class="toolbar">
                 {!wide && <button class="icon-button" onClick={() => history.back()} aria-label="Notebooks"><Icon name="back" /></button>}
                 <h1>{notebook.name}</h1>
-                <button class="icon-button" aria-label="New note" title="New note (Ctrl+N)" onClick={() => newNote(null)}><Icon name="plus" /></button>
+                {library.encrypted && (library.locked
+                    ? <button class="icon-button" aria-label="Unlock notebook" title="Encrypted and locked: unlock"
+                        onClick={() => setDialog(<UnlockDialog library={library} name={notebook.name} onClose={() => setDialog(null)} />)}><Icon name="lock" /></button>
+                    : <button class="icon-button" aria-label="Lock notebook" title="Encrypted: lock now (Ctrl+Shift+L)" onClick={lockNow}><Icon name="unlock" /></button>)}
+                <button class="icon-button" aria-label="New note" title="New note (Ctrl+N)" disabled={library.locked}
+                    onClick={() => newNote(null)}><Icon name="plus" /></button>
                 <button class="icon-button" aria-label="New folder" title="New folder" disabled={!library.online} onClick={() => newFolder(null)}><Icon name="folderNew" /></button>
                 <button class="icon-button" aria-label="Notebook actions" onClick={notebookMenu}><Icon name="menu" /></button>
             </header>
@@ -607,6 +640,9 @@ export function App() {
         if (phase !== 'ready') return null;
         if (DEMO) {
             const drive = seedDemo(new FakeDrive());
+            drive.ready = seedEncryptedDemo(drive).catch((e) => console.error("demo seeding failed", e)).then(() => {
+                drive.ready = null;
+            });
             drive.latency = 120;
             return new Library({ drive, store: new MemoryStore(), rootPath: 'Marknote' });
         }
@@ -675,7 +711,7 @@ export function App() {
     }
     return (
         <>
-            {DEMO && <div class="demo-banner">Demo with sample notes — changes are not saved. <a href="./">Leave demo</a></div>}
+            {DEMO && <div class="demo-banner">Demo with sample notes — changes are not saved. The “Private” notebook’s password is “demo password”. <a href="./">Leave demo</a></div>}
             <Workspace library={library} settings={settings} setSettings={setSettings} account={account}
                 onSignOut={() => {
                     Auth.signOut();

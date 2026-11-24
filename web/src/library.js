@@ -9,9 +9,22 @@
 // version it was opened from; otherwise the edit is saved next to it as
 // "Name (conflict yyyy-MM-dd HHmm).md", like the desktop sync engine does.
 // Offline, saves and new notes wait in an outbox on this device.
+//
+// Encrypted notebooks (docs/encryption.md): Drive, this device's cache and the
+// outbox only ever hold the encrypted files. Notes are decrypted in memory
+// with the notebook key, which is kept only until the notebook is locked or
+// the page is closed.
 
 import { AuthError, OfflineError } from './drive.js';
 import * as FM from './frontmatter.js';
+import * as Vault from './vault.js';
+
+/** The note is in an encrypted notebook that is locked. */
+export class LockedError extends Error {
+    constructor() {
+        super('This notebook is locked.');
+    }
+}
 
 export const NOTE_SUFFIX = '.md';
 export const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp' };
@@ -159,7 +172,11 @@ export class Library extends EventTarget {
         this.items = new Map();
         this.files = new Map(); // relative path -> image file in this notebook
         this.blobUrls = new Map(); // file id -> object URL
-        this.texts = new Map(); // id -> note text (this notebook)
+        this.texts = new Map(); // id -> note text (this notebook), decrypted
+        this.raws = new Map(); // id -> the file as stored (encrypted or not)
+        this.vault = null; // { id, md5, data } when this notebook is encrypted
+        this.keys = new Map(); // notebook id -> notebook key, in memory only
+        this.lastUse = 0;
         this.saveChains = new Map(); // id -> promise of the running upload
         this.saveSeq = new Map(); // id -> number of the newest save
         this.online = true;
@@ -170,6 +187,118 @@ export class Library extends EventTarget {
 
     emit(type, detail) {
         this.dispatchEvent(new CustomEvent(type, { detail }));
+    }
+
+    // ---- Encryption ----------------------------------------------------------
+
+    get encrypted() {
+        return !!this.vault;
+    }
+
+    get locked() {
+        return !!this.vault && !this.keys.has(this.notebook?.id);
+    }
+
+    key() {
+        this.lastUse = Date.now();
+        return this.notebook ? this.keys.get(this.notebook.id) : undefined;
+    }
+
+    /** Plain text of a stored file, or undefined while locked (or undecryptable). */
+    async decode(raw) {
+        if (!Vault.isEncryptedNote(raw)) return raw;
+        const key = this.key();
+        if (!key) return undefined;
+        try {
+            return await Vault.decryptNote(raw, key);
+        } catch (e) {
+            this.lastError = e.message;
+            return undefined;
+        }
+    }
+
+    /** What to store for a note's text: encrypted in an encrypted notebook. */
+    async encode(text, id = null) {
+        if (!this.vault) return text;
+        const key = this.key();
+        if (!key) throw new LockedError();
+        return Vault.encryptNote(text, key, id ? Vault.envelopeTitle(this.raws.get(id)) : '');
+    }
+
+    async setRaw(id, raw) {
+        this.raws.set(id, raw);
+        const text = await this.decode(raw);
+        if (text === undefined) this.texts.delete(id);
+        else this.texts.set(id, text);
+        return text;
+    }
+
+    isLockedNote(id) {
+        return this.locked && Vault.isEncryptedNote(this.raws.get(id));
+    }
+
+    async unlock(secret, { recovery = false } = {}) {
+        if (!this.vault) return true;
+        const key = recovery ? await Vault.unlockWithRecoveryKey(this.vault.data, secret) : await Vault.unlockWithPassword(this.vault.data, secret);
+        if (!key) return false;
+        this.keys.set(this.notebook.id, key);
+        this.lastUse = Date.now();
+        for (const [id, raw] of this.raws) await this.setRaw(id, raw);
+        for (const item of this.items.values()) if (!item.isFolder) this.applyMeta(item);
+        this.emit('tree');
+        this.emit('vault');
+        return true;
+    }
+
+    /** Forget the keys of all notebooks (or one) and every decrypted text. */
+    lock(notebookId = null) {
+        const ids = notebookId ? [notebookId] : [...this.keys.keys()];
+        if (!ids.length) return;
+        // Open editors save now, while the key is still here (synchronous).
+        this.emit('before-lock');
+        // (Not zeroed: a save that started before locking may still use it.)
+        for (const id of ids) this.keys.delete(id);
+        if (this.notebook && ids.includes(this.notebook.id)) {
+            for (const [id, raw] of this.raws) {
+                if (Vault.isEncryptedNote(raw)) this.texts.delete(id);
+            }
+            for (const item of this.items.values()) {
+                if (!item.isFolder && !this.texts.has(item.id)) {
+                    item.icon = '';
+                    item.tags = [];
+                }
+            }
+        }
+        this.emit('tree');
+        this.emit('vault');
+    }
+
+    /** Lock after this many idle minutes (0: never). Call regularly. */
+    autoLock(minutes) {
+        if (minutes > 0 && this.keys.size && Date.now() - this.lastUse > minutes * 60000) this.lock();
+    }
+
+    async loadVault(file, fetchMissing) {
+        if (!file) {
+            this.vault = null;
+            return;
+        }
+        const md5 = file.md5Checksum ?? '';
+        let text;
+        const cached = await this.store.get('content', file.id);
+        if (cached && (cached.md5 === md5 || !fetchMissing)) text = cached.text;
+        else if (fetchMissing) {
+            text = await this.drive.getText(file.id);
+            await this.store.set('content', file.id, { md5, text });
+        }
+        if (text === undefined) return;
+        try {
+            this.vault = { id: file.id, md5, data: Vault.parseVault(text) };
+        } catch (e) {
+            this.lastError = e.message;
+            this.vault = { id: file.id, md5, data: null };
+        }
+        if (this.notebook) this.notebook.encrypted = true;
     }
 
     setOnline(online) {
@@ -258,6 +387,8 @@ export class Library extends EventTarget {
         this.items = new Map();
         this.files = new Map();
         this.texts = new Map();
+        this.raws = new Map();
+        this.vault = null;
         const cached = await this.store.get('listings', nb.id);
         if (cached) {
             await this.applyListing(cached, false);
@@ -287,7 +418,10 @@ export class Library extends EventTarget {
         const items = new Map();
         const files = new Map();
         const dirFiles = new Map(); // folder id -> .directory file
+        await this.loadVault(listing.find((f) => f.path === Vault.VAULT_PATH), fetchMissing);
+        if (this.notebook !== nb) return;
         for (const f of listing) {
+            if (f.path === Vault.VAULT_PATH) continue;
             if (f.name === '.directory') {
                 dirFiles.set(f.parentId, f);
                 continue;
@@ -323,12 +457,12 @@ export class Library extends EventTarget {
         for (const item of notes) {
             const cached = await this.store.get('content', item.id);
             if (cached && (cached.md5 === item.md5 || cached.dirty)) {
-                this.texts.set(item.id, cached.text);
+                await this.setRaw(item.id, cached.text);
                 if (cached.dirty) item.pending = true;
             } else if (fetchMissing) {
                 toFetch.push(item);
             } else if (cached) {
-                this.texts.set(item.id, cached.text); // stale but better than nothing offline
+                await this.setRaw(item.id, cached.text); // stale but better than nothing offline
             }
         }
         const dirsToFetch = [];
@@ -354,7 +488,7 @@ export class Library extends EventTarget {
                 ...toFetch.map((item) => async () => {
                     const text = await this.drive.getText(item.id);
                     await this.store.set('content', item.id, { md5: item.md5, text });
-                    this.texts.set(item.id, text);
+                    await this.setRaw(item.id, text);
                     this.applyMeta(item);
                 }),
                 ...dirsToFetch.map(({ target, file }) => async () => {
@@ -423,10 +557,12 @@ export class Library extends EventTarget {
         const item = this.items.get(id);
         if (!item) throw new Error('Note not found');
         if (this.texts.has(id)) return this.texts.get(id);
+        if (this.isLockedNote(id)) throw new LockedError();
         return this.guard(async () => {
-            const text = await this.drive.getText(id);
-            await this.store.set('content', id, { md5: item.md5, text });
-            this.texts.set(id, text);
+            const raw = await this.drive.getText(id);
+            await this.store.set('content', id, { md5: item.md5, text: raw });
+            const text = await this.setRaw(id, raw);
+            if (text === undefined) throw this.locked ? new LockedError() : new Error(this.lastError || 'This note could not be decrypted.');
             this.applyMeta(item);
             return text;
         });
@@ -496,6 +632,10 @@ export class Library extends EventTarget {
         const item = this.items.get(id);
         if (!item) return Promise.reject(new Error('Note not found'));
         if (this.texts.get(id) === text) return Promise.resolve({});
+        if (this.vault && !this.key()) return Promise.reject(new LockedError());
+        // Encrypt with the key as it is now, so locking right after still saves.
+        const encoded = this.encode(text, id);
+        encoded.catch(() => {});
         this.texts.set(id, text);
         this.applyMeta(item);
         this.emit('tree');
@@ -506,12 +646,18 @@ export class Library extends EventTarget {
         const run = (this.saveChains.get(id) ?? Promise.resolve()).catch(() => {}).then(async () => {
             if (this.saveSeq.get(id) !== seq) return { superseded: true };
             const current = this.items.get(id) ?? item;
-            const latest = this.texts.get(id);
+            const raw = await encoded;
+            this.raws.set(id, raw);
             try {
-                return await this.upload(current, latest, current.md5);
+                return await this.upload(current, raw, current.md5);
             } catch (e) {
                 if (!isRetryable(e)) throw e;
-                await this.queueSave(current, latest);
+                await this.queueSave(current, raw);
+                // Back online already (the connection returned while this was
+                // being queued): upload now rather than at the next refresh.
+                if (typeof navigator !== 'undefined' && navigator.onLine && !(e instanceof AuthError)) {
+                    setTimeout(() => this.flushOutbox().catch(() => {}), 1000);
+                }
                 return { queued: true };
             } finally {
                 this.emit('tree');
@@ -536,13 +682,15 @@ export class Library extends EventTarget {
         await this.countPending();
     }
 
+    /** Upload a note's stored form (raw: encrypted in an encrypted notebook). */
     async upload(item, text, baseMd5) {
         return this.guard(async () => {
             if (item.id.startsWith('local-')) throw new OfflineError('not uploaded yet');
             const remote = await this.drive.getMeta(item.id);
             if ((remote.md5Checksum ?? '') !== baseMd5) {
                 const theirs = await this.drive.getText(item.id);
-                if (theirs === text) {
+                const theirsPlain = theirs === text ? text : await this.decode(theirs);
+                if (theirs === text || (theirsPlain !== undefined && theirsPlain === (await this.decode(text)))) {
                     item.md5 = remote.md5Checksum ?? '';
                     item.pending = false;
                     await this.store.set('content', item.id, { md5: item.md5, text });
@@ -553,10 +701,10 @@ export class Library extends EventTarget {
                     const name = conflictName(item.name, this.siblingsNames(item.parentId));
                     const copy = await this.drive.createFile(item.driveParentId, name, text);
                     item.md5 = remote.md5Checksum ?? '';
-                    this.texts.set(item.id, theirs);
+                    await this.setRaw(item.id, theirs);
                     this.applyMeta(item);
                     await this.store.set('content', item.id, { md5: item.md5, text: theirs });
-                    const copyItem = this.addItem(copy, item.parentId, text);
+                    const copyItem = this.addItem(copy, item.parentId, text, await this.decode(text));
                     return { conflictCopy: copyItem };
                 }
             }
@@ -569,7 +717,8 @@ export class Library extends EventTarget {
         });
     }
 
-    addItem(file, parentId, text) {
+    /** text: the stored form; plain: its decrypted text (defaults to text). */
+    addItem(file, parentId, text, plain = text) {
         const item = {
             id: file.id, name: file.name, title: file.mimeType?.endsWith('.folder') ? file.name : noteName(file.name),
             path: file.name, parentId, driveParentId: parentId ?? this.notebook.id,
@@ -579,7 +728,8 @@ export class Library extends EventTarget {
         };
         this.items.set(item.id, item);
         if (text !== undefined) {
-            this.texts.set(item.id, text);
+            this.raws.set(item.id, text);
+            if (plain !== undefined) this.texts.set(item.id, plain);
             this.store.set('content', item.id, { md5: item.md5, text });
             this.applyMeta(item);
         }
@@ -590,15 +740,17 @@ export class Library extends EventTarget {
     async createNote(parentId, title) {
         const name = uniqueName(title, this.siblingsNames(parentId));
         const text = FM.join(FM.initialRaw(new Date()), `# ${noteName(name)}\n`);
+        const raw = await this.encode(text);
         try {
-            const file = await this.guard(() => this.drive.createFile(parentId ?? this.notebook.id, name, text));
-            return this.addItem(file, parentId, text);
+            const file = await this.guard(() => this.drive.createFile(parentId ?? this.notebook.id, name, raw));
+            return this.addItem(file, parentId, raw, text);
         } catch (e) {
             if (!isRetryable(e)) throw e;
-            const op = { type: 'create', id: `local-${FM.newId()}`, notebookId: this.notebook.id, parentId, name, text, at: Date.now() };
+            const op = { type: 'create', id: `local-${FM.newId()}`, notebookId: this.notebook.id, parentId, name, text: raw, at: Date.now() };
             await this.store.set('outbox', op.id, op);
             const item = this.itemFromCreateOp(op);
             this.items.set(item.id, item);
+            this.raws.set(item.id, raw);
             this.texts.set(item.id, text);
             this.applyMeta(item);
             await this.countPending();
@@ -658,6 +810,7 @@ export class Library extends EventTarget {
             for (const child of this.children(i)) remove(child.id);
             this.items.delete(i);
             this.texts.delete(i);
+            this.raws.delete(i);
         };
         remove(item.id);
         await this.countPending();
@@ -721,9 +874,11 @@ export class Library extends EventTarget {
                     await this.store.del('content', op.id);
                     await this.store.set('content', file.id, { md5: file.md5Checksum ?? '', text: op.text });
                     if (this.notebook?.id === op.notebookId && this.items.has(op.id)) {
+                        const plain = this.texts.get(op.id);
                         this.items.delete(op.id);
                         this.texts.delete(op.id);
-                        this.addItem(file, op.parentId, op.text);
+                        this.raws.delete(op.id);
+                        this.addItem(file, op.parentId, op.text, plain);
                         this.emit('replaced', { from: op.id, to: file.id });
                     }
                 } else if (op.type === 'save') {

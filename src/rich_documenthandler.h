@@ -48,6 +48,11 @@ public Q_SLOTS:
     void updateFileUrl(const QUrl &newUrl) override;
     void reloadFiles(const QList<QUrl> &fileUrls) override;
 
+protected:
+    QList<QUrl> heldFiles() const override;
+
+public:
+
 Q_SIGNALS:
     void treeModelChanged();
     void requestScrollToBlock(int topLevelBlockIndex);

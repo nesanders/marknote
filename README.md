@@ -99,6 +99,18 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   diagrams and images, a live-preview Markdown editor with a `/` menu, photo upload,
   an offline copy with edits uploaded later, and conflict copies instead of overwrites. Try it with `?demo`; setup is in [web/README.md](web/README.md).
 
+**Encrypted notebooks** (format: [docs/encryption.md](docs/encryption.md))
+- Right-click a notebook › *Encrypt Notebook…*: every note's text, tags, icon and dates
+  are encrypted with a password (Argon2id + XChaCha20-Poly1305, libsodium). Note titles
+  (file names), folder names and images stay readable, and the app says so.
+- You get a **recovery key** once. Store it in your password manager: without the
+  password or that key, nobody can read the notes, not even you.
+- Locked notebooks list their notes by title; opening one asks for the password.
+  Lock now with Ctrl+Shift+L; auto-lock after 5–60 idle minutes (Settings menu).
+  Change the password or remove encryption from the notebook menu.
+- Synced notebooks stay encrypted on Google Drive; the web app unlocks and edits them
+  too (encrypting a notebook or changing its password is desktop-only for now).
+
 ### Setting up Google Drive sync
 
 Google requires every app that signs in to have an OAuth client. This repository and

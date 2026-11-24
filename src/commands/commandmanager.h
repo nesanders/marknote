@@ -89,6 +89,8 @@ Q_SIGNALS:
     void modelChanged();
     void canUndoChanged();
     void canRedoChanged();
+    /// The note was edited (or an edit undone/redone): time to save.
+    void contentChanged();
     void internalLinkActivated(const QString &noteName);
 
 private:

@@ -80,6 +80,14 @@ public Q_SLOTS:
     /// The files changed on disk (e.g. after a sync): re-read the open one.
     virtual void reloadFiles(const QList<QUrl> &fileUrls);
 
+protected:
+    /// Files whose text this handler holds in memory (open note and caches).
+    virtual QList<QUrl> heldFiles() const;
+    /// A notebook was locked: forget its plaintext.
+    void dropNotebook(const QString &notebook);
+
+public:
+
 Q_SIGNALS:
     void documentChanged();
     void textAreaChanged();
