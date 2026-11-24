@@ -60,3 +60,9 @@ if(TARGET Qt6::HttpServer)
         NAME_PREFIX "marknote-"
     )
 endif()
+
+ecm_add_test(imagepathstest.cpp
+    TEST_NAME imagepathstest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)

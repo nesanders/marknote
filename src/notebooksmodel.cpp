@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "notebooksmodel.h"
+#include "notemetadata/imagelinks.h"
+#include "notemetadata/notemetadata.h"
 #include <QDebug>
 #include <QDirIterator>
 #include <QFile>
@@ -238,9 +240,20 @@ void NoteBooksModel::moveNote(const QString &noteUri, const QString &notebookPat
         return;
     }
 
+    // The note's own images go with it; links to other images are rewritten
+    // (or the images copied, since they are in another notebook now).
+    NoteMetadata::instance()->beginRewrite();
     if (!QFile::rename(notePath, newPath)) {
         qWarning() << "Failed to move note from" << notePath << "to" << newPath;
+        return;
     }
+    QString oldNotebook;
+    if (m_directory) {
+        const QString rel = QDir(m_directory->path()).relativeFilePath(notePath);
+        oldNotebook = QDir(m_directory->path()).filePath(rel.section(u'/', 0, 0));
+    }
+    const auto report = ImageLinks::noteMoved(notePath, newPath, oldNotebook, QDir::cleanPath(notebookPath));
+    NoteMetadata::instance()->endRewrite(report.changedNotes);
 }
 
 QString NoteBooksModel::iconNameForPath(const QString &path) const

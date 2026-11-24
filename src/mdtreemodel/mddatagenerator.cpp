@@ -3,6 +3,8 @@
 
 #include "mddatagenerator.h"
 #include "mdoptions/mdoptions.h"
+#include <QDir>
+#include <QFileInfo>
 #include <QImageReader>
 #include <QRegularExpression>
 #include <QUrl>
@@ -14,6 +16,54 @@ namespace MDDataGenerator
 namespace
 {
 constexpr int maxImageWidth = 512;
+
+// The folder of the note a document was parsed from. md4qt puts an anchor
+// labelled with the note's path first in every document.
+QString noteDirectory(const QSharedPointer<MD::Document> &doc)
+{
+    if (!doc || doc->items().isEmpty() || doc->items().first()->type() != MD::ItemType::Anchor) {
+        return {};
+    }
+    const QString label = static_cast<MD::Anchor *>(doc->items().first().get())->label();
+    if (label.isEmpty()) {
+        return {};
+    }
+    const QFileInfo info(label);
+    return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+}
+
+// Images are linked relative to the note (as in Obsidian, on GitHub and in the
+// web app); the rich text view needs absolute file URLs to load them.
+QString resolveImageSources(const QString &html, const QString &baseDir)
+{
+    static const QRegularExpression imgSrcRe(u"(<img\\b[^>]*?\\bsrc=\")([^\"]*)(\")"_s);
+    QString result;
+    qsizetype last = 0;
+    auto it = imgSrcRe.globalMatch(html);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        QString src = m.captured(2);
+        src.replace(u"&amp;"_s, u"&"_s);
+        QString resolved;
+        const QUrl url(src);
+        if (!url.scheme().isEmpty() && url.scheme().size() > 1) {
+            continue; // file:, http(s):, data:, qrc: … as written
+        }
+        const QString path = QUrl::fromPercentEncoding(src.toUtf8());
+        if (QDir::isAbsolutePath(path)) {
+            resolved = QUrl::fromLocalFile(QDir::cleanPath(path)).toString(QUrl::FullyEncoded);
+        } else if (!baseDir.isEmpty()) {
+            resolved = QUrl::fromLocalFile(QDir::cleanPath(QDir(baseDir).filePath(path))).toString(QUrl::FullyEncoded);
+        } else {
+            continue;
+        }
+        result += QStringView(html).mid(last, m.capturedStart(2) - last);
+        result += resolved.toHtmlEscaped();
+        last = m.capturedEnd(2);
+    }
+    result += QStringView(html).mid(last);
+    return result;
+}
 
 // Qt rich text stretches wide images to the full width of the text. Cap their size and keep the aspect ratio.
 QString capImageWidth(const QString &html)
@@ -68,13 +118,18 @@ void applyIntermediateData(QSharedPointer<MD::Document> to, QSharedPointer<MD::D
     to->setLabeledLinks(from->labeledLinks());
 }
 
+QString resolveImageLinks(const QString &html, const QString &noteDir)
+{
+    return resolveImageSources(html, noteDir);
+}
+
 QString toHtml(const QSharedPointer<MD::Item> &item, QSharedPointer<MD::Document> fullDoc)
 {
     auto doc = QSharedPointer<MD::Document>::create();
     doc->appendItem(item);
     applyIntermediateData(doc, fullDoc);
 
-    return capImageWidth(MD::toHtml(doc, false, {}, false));
+    return capImageWidth(resolveImageSources(MD::toHtml(doc, false, {}, false), noteDirectory(fullDoc)));
 }
 
 QString toMd(const QSharedPointer<MD::Item> &item)

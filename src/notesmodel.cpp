@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "notesmodel.h"
-#include "notemetadata/frontmatter.h"
+#include "mdtreemodel/mddatagenerator.h"
+#include "notemetadata/imagelinks.h"
 #include "notemetadata/notemetadata.h"
+#include "notemetadata/frontmatter.h"
 #include <KConfigGroup>
 #include <KDesktopFile>
 #include <KLocalizedString>
@@ -423,7 +425,8 @@ void NotesModel::copyWholeNote(const QUrl &path)
 
     QTextDocument doc;
     doc.setMarkdown(markdown);
-    const QString html = doc.toHtml();
+    // Pasted elsewhere, note-relative images need absolute paths.
+    const QString html = MDDataGenerator::resolveImageLinks(doc.toHtml(), QFileInfo(path.toLocalFile()).absolutePath());
 
     QMimeData *mime = new QMimeData();
     mime->setText(markdown);
@@ -454,9 +457,15 @@ bool NotesModel::moveEntry(const QUrl &source, const QUrl &destination)
 
     QString newPath = destPath + QDir::separator() + sourceInfo.fileName();
 
+    // Open editors save first; relative image links are fixed up afterwards.
+    NoteMetadata::instance()->beginRewrite();
     bool success = QFile::rename(srcPath, newPath);
     if (!success) {
         Q_EMIT errorOccurred(i18nc("@info:status", "Failed to move file."));
+    } else {
+        const ImageLinks::Report report = sourceInfo.isDir() ? ImageLinks::folderMoved(srcPath, newPath, m_path, m_path)
+                                                             : (newPath.endsWith(u".md"_s) ? ImageLinks::noteMoved(srcPath, newPath, m_path, m_path) : ImageLinks::Report());
+        NoteMetadata::instance()->endRewrite(report.changedNotes);
     }
     updateTotalNotesCount();
 
@@ -527,6 +536,8 @@ bool NotesModel::exportToPdf(const QUrl &path, const QUrl &destination)
     writer.setTitle(path.toLocalFile().split(QLatin1Char('/')).constLast());
 
     QTextDocument doc;
+    // Relative image links are relative to the note.
+    doc.setBaseUrl(QUrl::fromLocalFile(QFileInfo(path.toLocalFile()).absolutePath() + u'/'));
     doc.setMarkdown(QString::fromUtf8(data));
 
     cleanupImageInDocument(doc);
@@ -559,9 +570,14 @@ bool NotesModel::exportToHtml(const QUrl &path, const QUrl &destination)
         0);
 #else
     QTextDocument doc;
+    // Relative image links are relative to the note.
+    doc.setBaseUrl(QUrl::fromLocalFile(QFileInfo(path.toLocalFile()).absolutePath() + u'/'));
     doc.setMarkdown(QString::fromUtf8(data));
     output = doc.toHtml().toUtf8();
 #endif
+
+    // The HTML file is saved elsewhere: make note-relative images absolute.
+    output = MDDataGenerator::resolveImageLinks(QString::fromUtf8(output), QFileInfo(path.toLocalFile()).absolutePath()).toUtf8();
 
     QFile exportFile(destination.toLocalFile());
     if (!exportFile.open(QFile::WriteOnly))
@@ -583,6 +599,8 @@ bool NotesModel::exportToOdt(const QUrl &path, const QUrl &destination)
     QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
 
     QTextDocument doc;
+    // Relative image links are relative to the note.
+    doc.setBaseUrl(QUrl::fromLocalFile(QFileInfo(path.toLocalFile()).absolutePath() + u'/'));
     doc.setMarkdown(QString::fromUtf8(data));
     cleanupImageInDocument(doc, true);
 
