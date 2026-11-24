@@ -191,6 +191,23 @@ Controls.MenuBar {
 
         Controls.MenuItem { action: root.actions.showMenubar }
         Controls.MenuSeparator {}
+        Controls.MenuItem { action: root.actions.autoSync }
+        Controls.Menu {
+            title: KI18n.i18nc("@title:menu", "Check for Changes Every")
+            enabled: Config.autoSync
+            Repeater {
+                model: [2, 5, 15, 30]
+                delegate: Controls.MenuItem {
+                    required property int modelData
+                    text: KI18n.i18ncp("@action:inmenu", "%1 minute", "%1 minutes", modelData)
+                    checkable: true
+                    checked: Config.autoSyncMinutes === modelData
+                    autoExclusive: true
+                    onTriggered: root.actions.setAutoSyncMinutes(modelData)
+                }
+            }
+        }
+        Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.lockAll }
         Controls.Menu {
             title: KI18n.i18nc("@title:menu", "Lock Encrypted Notebooks After")

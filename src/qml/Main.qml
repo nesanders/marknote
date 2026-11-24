@@ -199,6 +199,9 @@ StatetfulApp.StatefulWindow {
         component.createObject(root, { noteUrl: url, noteName: name }).open();
     }
 
+    // Coming back to the window: look for changes made elsewhere (at most every 2 min).
+    onActiveChanged: if (active) SyncManager.syncAllInBackground(120)
+
     Connections {
         target: Vaults
         function onNotice(message: string): void {
@@ -220,8 +223,15 @@ StatetfulApp.StatefulWindow {
             NoteMetadata.filesChanged(filePaths);
         }
 
-        function onSyncFinished(notebookPath: string, ok: bool, summary: string, errors: list<string>): void {
+        function onSyncFinished(notebookPath: string, ok: bool, summary: string, errors: list<string>, background: bool, received: int): void {
             const name = notebookPath.split("/").filter(p => p.length > 0).pop() ?? "";
+            if (background) {
+                // Quiet unless something arrived; failures show on the sync button.
+                if (received > 0) {
+                    root.showPassiveNotification(i18ncp("@info:status %2 is a notebook", "%2: 1 note updated by sync", "%2: %1 notes updated by sync", received, name));
+                }
+                return;
+            }
             if (ok) {
                 root.showPassiveNotification(i18nc("@info:status %1 is a notebook, %2 a summary", "%1: %2", name, summary));
             } else {

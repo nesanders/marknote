@@ -139,6 +139,10 @@ private Q_SLOTS:
         QCOMPARE(read(b + u"/Note.md"_s), QByteArray("edited on B"));
         QCOMPARE(read(b + u"/"_s + r.conflictCopies.first()), QByteArray("edited on A"));
         QVERIFY(r.conflictCopies.first().startsWith(u"Note (conflict "_s));
+        // The change list names the note and its copy.
+        QCOMPARE(r.log.first().kind, SyncChange::Conflict);
+        QCOMPARE(r.log.first().path, u"Note.md"_s);
+        QCOMPARE(r.log.first().copy, r.conflictCopies.first());
 
         // …and after another round both devices hold both versions.
         syncDevice(b);
@@ -147,6 +151,30 @@ private Q_SLOTS:
         QCOMPARE(read(a + u"/Note.md"_s), QByteArray("edited on B"));
         QCOMPARE(syncDevice(a).changes(), 0);
         QCOMPARE(syncDevice(b).changes(), 0);
+    }
+
+    void testChangeList()
+    {
+        write(a + u"/One.md"_s, "1");
+        write(a + u"/Two.md"_s, "2");
+        SyncResult r = syncDevice(a);
+        QCOMPARE(r.log.size(), 2);
+        for (const SyncChange &c : r.log) {
+            QCOMPARE(c.kind, SyncChange::Sent);
+        }
+        r = syncDevice(b);
+        QCOMPARE(r.log.size(), 2);
+        QCOMPARE(r.log.at(0).kind, SyncChange::Received);
+        QCOMPARE(r.log.at(0).path, u"One.md"_s);
+
+        QFile::remove(a + u"/Two.md"_s);
+        r = syncDevice(a);
+        QCOMPARE(r.log.size(), 1);
+        QCOMPARE(r.log.first().kind, SyncChange::DeletedThere);
+        r = syncDevice(b);
+        QCOMPARE(r.log.size(), 1);
+        QCOMPARE(r.log.first().kind, SyncChange::DeletedHere);
+        QCOMPARE(r.log.first().path, u"Two.md"_s);
     }
 
     void testDeletionsAreRecoverable()

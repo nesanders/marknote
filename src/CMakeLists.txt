@@ -47,6 +47,7 @@ ecm_add_qml_module(marknote_static
         qml/TagEditorDialog.qml
         qml/NoteMetaStrip.qml
         qml/NotebookSyncDialog.qml
+        qml/SyncStatusButton.qml
         qml/NoteInlineStatusBar.qml
         qml/NoteLinkDialog.qml
         qml/NoteMetadataDialog.qml

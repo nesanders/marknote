@@ -228,6 +228,24 @@ QtObject {
         onTriggered: Vaults.lockAll()
     }
 
+    property Kirigami.Action autoSync: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Sync in the Background")
+        icon.name: "state-sync"
+        checkable: true
+        checked: Config.autoSync
+        onTriggered: {
+            Config.autoSync = checked;
+            Config.save();
+            SyncManager.backgroundSettingsChanged();
+        }
+    }
+
+    function setAutoSyncMinutes(minutes: int): void {
+        Config.autoSyncMinutes = minutes;
+        Config.save();
+        SyncManager.backgroundSettingsChanged();
+    }
+
     function setAutoLock(minutes: int): void {
         Config.autoLockMinutes = minutes;
         Config.save();

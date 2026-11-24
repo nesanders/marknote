@@ -24,7 +24,22 @@ struct SyncState {
     bool save(const QString &filePath) const;
 };
 
+/// One thing a sync did to one file.
+struct SyncChange {
+    enum Kind {
+        Received, ///< new or changed on the destination, written here
+        Sent, ///< new or changed here, written there
+        DeletedHere, ///< deleted on the destination, moved to .marknote/trash here
+        DeletedThere, ///< deleted here, trashed on the destination
+        Conflict, ///< changed on both sides: path kept ours, copy holds theirs
+    };
+    Kind kind;
+    QString path; ///< relative to the notebook
+    QString copy; ///< Conflict: relative path of the copy with the other version
+};
+
 struct SyncResult {
+    QList<SyncChange> log; ///< in the order they happened
     int uploaded = 0;
     int downloaded = 0;
     int deletedLocal = 0; ///< moved to .marknote/trash
