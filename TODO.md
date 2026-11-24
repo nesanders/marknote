@@ -26,6 +26,12 @@ Fork-only work. Nothing here is pushed to upstream KDE.
       notes reload after sync. Tests run against a fake Drive and fake OAuth
       server.
 
+- [x] **Web app / PWA** (`feature/pwa`, `web/`) — Drive notebooks on phones:
+      tree, tags, filter (name, tag:, contents, all/any), icons, rendered notes
+      with tappable checklists, CodeMirror Markdown editor with formatting bar,
+      conflict copies, offline outbox, demo mode. OAuth client entered per device
+      (never in the repo or site). Unit + Playwright tests; GitHub Pages workflow.
+
 ## Known gaps / follow-ups
 
 - [ ] Slash menu: Image and Link-to-note entries (mockup) are not added yet.
@@ -76,7 +82,13 @@ Fork-only work. Nothing here is pushed to upstream KDE.
 - [ ] Live-test against real Google Drive with a real OAuth client (so far only
       the fake servers; the flow follows Google's documented installed-app flow).
 
-### Android app
+### Web app follow-ups
+- [ ] Show images stored next to notes (fetch from Drive as blobs).
+- [ ] Mermaid and math rendering (lazy-loaded).
+- [ ] Drag and drop in the tree; incremental Drive listing (changes API).
+- [ ] Encrypted notebooks once the crypto format exists (libsodium.js).
+
+### Android app (native; the PWA may be enough)
 - [ ] Same codebase (Kirigami is convergent; upstream CI already builds Android).
       Phone layout: drill-down folder pages instead of the tree, filter bar on
       top, menu bar replaced by the global drawer.

@@ -86,6 +86,12 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 </tr>
 </table>
 
+**Web app for phones** (branch `feature/pwa`, folder [`web/`](web/README.md))
+- An installable web app (PWA) for Android and iPhone that opens the same notebooks from
+  Google Drive: tree, tags, filter, icons, rendered notes with tappable checklists, a
+  Markdown editor, offline copy with edits uploaded later, and conflict copies instead
+  of overwrites. Try it with `?demo`; setup is in [web/README.md](web/README.md).
+
 ### Setting up Google Drive sync
 
 Google requires every app that signs in to have an OAuth client. This repository and
