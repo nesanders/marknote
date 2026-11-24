@@ -35,6 +35,10 @@ rmSync(join(out, 'app_css.css'));
 rmSync(join(out, 'app_css.js'), { force: true });
 
 cpSync('public', out, { recursive: true });
+// KaTeX's stylesheet and fonts, loaded with the first formula.
+mkdirSync(join(out, 'katex'), { recursive: true });
+cpSync('node_modules/katex/dist/katex.min.css', join(out, 'katex/katex.min.css'));
+cpSync('node_modules/katex/dist/fonts', join(out, 'katex/fonts'), { recursive: true });
 
 // Service worker: cache every file of this build; the version changes with content.
 const files = [];
@@ -42,16 +46,29 @@ const walk = (dir) => {
     for (const name of readdirSync(dir)) {
         const p = join(dir, name);
         if (statSync(p).isDirectory()) walk(p);
-        else if (name !== 'sw.js' && !name.endsWith('.LEGAL.txt')) files.push(p);
+        else if (name !== 'sw.js' && !name.endsWith('.LEGAL.txt') && !p.includes('/katex/fonts/') && !p.includes('chunks/')) files.push(p);
     }
 };
 walk(out);
 const hash = createHash('sha256');
 for (const f of files.sort()) hash.update(f).update(readFileSync(f));
-const shell = ['./', ...files.map((f) => './' + relative(out, f).replaceAll('\\', '/'))];
+// Chunks the app imports at startup (statically) are part of the shell too.
+const startup = new Set();
+const follow = (file) => {
+    const code = readFileSync(join(out, file), 'utf8');
+    for (const m of code.matchAll(/(?:from|import)\s*"\.\/(?:chunks\/)?([\w-]+\.js)"/g)) {
+        const chunk = `chunks/${m[1]}`;
+        if (!startup.has(chunk) && statSync(join(out, chunk), { throwIfNoEntry: false })) {
+            startup.add(chunk);
+            follow(chunk);
+        }
+    }
+};
+follow('app.js');
+const shell = ['./', ...files.map((f) => './' + relative(out, f).replaceAll('\\', '/')), ...[...startup].map((c) => './' + c)];
 const sw = readFileSync(join(out, 'sw.js'), 'utf8')
     .replace('__BUILD_VERSION__', hash.digest('hex').slice(0, 12))
-    .replace('__SHELL_FILES__', JSON.stringify(shell.filter((f) => !f.includes('/chunks/'))));
+    .replace('__SHELL_FILES__', JSON.stringify(shell));
 writeFileSync(join(out, 'sw.js'), sw);
 console.log(`Built ${files.length} files into ${out}/`);
 

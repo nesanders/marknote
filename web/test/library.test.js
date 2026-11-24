@@ -178,3 +178,26 @@ test('quick successive saves of one note never conflict with each other', async 
     assert.equal(FM.split(final).body, 'three');
     assert.deepEqual(FM.parse(FM.split(final).raw).tags, ['a']);
 });
+
+test('images: index, desktop file:// links, relative links, upload next to the note', async () => {
+    const { drive, lib } = await setup();
+    const rich = byTitle(lib, 'Rich note');
+    assert.ok(lib.files.has('Rich note_1732400000000.svg'));
+    assert.deepEqual(lib.resolveImage(rich.id, 'Rich%20note_1732400000000.svg'), { path: 'Rich note_1732400000000.svg' });
+    const feature = byTitle(lib, 'Feature list');
+    assert.deepEqual(lib.resolveImage(feature.id, 'file:///home/me/Documents/Notes/Projects/Marknote%20overhaul/Feature%20list_1732400000000.svg'),
+        { path: 'Marknote overhaul/Feature list_1732400000000.svg' });
+    assert.deepEqual(lib.resolveImage(feature.id, '../Rich note_1732400000000.svg'), { path: 'Rich note_1732400000000.svg' });
+    assert.deepEqual(lib.resolveImage(feature.id, 'https://example.com/a.png'), { external: 'https://example.com/a.png' });
+    assert.ok(lib.resolveImage(feature.id, 'nope.png').missing);
+    // Images are not notes: not in the tree.
+    assert.ok(![...lib.items.values()].some((i) => i.name.endsWith('.svg')));
+
+    const link = await lib.addImage(feature.id, new Blob(['png-bytes'], { type: 'image/png' }), 'photo.jpg');
+    assert.match(link, /^Feature%20list_\d+\.jpg$/);
+    const stored = drive.findByPath(`Marknote/Projects/Marknote overhaul/${decodeURI(link)}`);
+    assert.ok(stored, 'stored next to the note');
+    assert.equal(stored.mimeType, 'image/jpeg');
+    assert.deepEqual(lib.resolveImage(feature.id, link), { path: `Marknote overhaul/${decodeURI(link)}` });
+    assert.equal(await (await drive.getBlob(stored.id)).text(), 'png-bytes');
+});

@@ -9,6 +9,15 @@ import DOMPurify from 'dompurify';
 
 const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: false });
 
+// Desktop Marknote links images as file:///…; those are resolved to the copy in
+// Drive, never opened. Script-like schemes stay blocked.
+md.validateLink = (url) => {
+    const s = url.trim().toLowerCase();
+    if (/^(javascript|vbscript):/.test(s)) return false;
+    if (s.startsWith('data:')) return /^data:image\/(gif|png|jpeg|webp);/.test(s);
+    return true;
+};
+
 md.core.ruler.after('inline', 'marknote_tasks', (state) => {
     const tokens = state.tokens;
     for (let i = 2; i < tokens.length; ++i) {
@@ -28,9 +37,103 @@ md.core.ruler.after('inline', 'marknote_tasks', (state) => {
 // html: false escapes raw HTML, but our own checkbox tokens must pass through.
 md.renderer.rules.html_inline = (tokens, idx) => tokens[idx].content;
 
+// ---- Math: $inline$, $$display$$ (same syntax md4qt parses on desktop) ----
+
+function mathInline(state, silent) {
+    const src = state.src;
+    const start = state.pos;
+    if (src[start] !== '$') return false;
+    const display = src[start + 1] === '$';
+    const open = display ? 2 : 1;
+    const first = src[start + open];
+    if (first === undefined || (!display && /\s/.test(first))) return false;
+    let pos = start + open;
+    while (pos < state.posMax) {
+        if (src[pos] === '\\') {
+            pos += 2;
+            continue;
+        }
+        if (src[pos] === '$' && (!display || src[pos + 1] === '$')) {
+            if (!display && (/\s/.test(src[pos - 1]) || /\d/.test(src[pos + 1] ?? ''))) {
+                pos += 1;
+                continue;
+            }
+            break;
+        }
+        pos += 1;
+    }
+    if (pos >= state.posMax) return false;
+    const tex = src.slice(start + open, pos);
+    if (!tex.trim()) return false;
+    if (!silent) {
+        const t = state.push('math_inline', 'span', 0);
+        t.content = tex;
+        t.meta = { display };
+    }
+    state.pos = pos + open;
+    return true;
+}
+
+function mathBlock(state, startLine, endLine, silent) {
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const max = state.eMarks[startLine];
+    if (state.src.slice(start, start + 2) !== '$$') return false;
+    let firstLine = state.src.slice(start + 2, max);
+    let next = startLine;
+    let lastLine = '';
+    let found = false;
+    if (firstLine.trim().endsWith('$$') && firstLine.trim().length > 2) {
+        firstLine = firstLine.trim().slice(0, -2);
+        found = true;
+    }
+    while (!found) {
+        next += 1;
+        if (next >= endLine) return false;
+        const s = state.bMarks[next] + state.tShift[next];
+        const line = state.src.slice(s, state.eMarks[next]);
+        if (line.trim().endsWith('$$')) {
+            lastLine = line.trim().slice(0, -2);
+            found = true;
+        }
+    }
+    if (silent) return true;
+    const t = state.push('math_block', 'div', 0);
+    t.block = true;
+    t.content = (firstLine.trim() ? firstLine + '\n' : '')
+        + (next > startLine ? state.getLines(startLine + 1, next, state.tShift[startLine], true) : '')
+        + (lastLine.trim() ? lastLine : '');
+    t.map = [startLine, next + 1];
+    state.line = next + 1;
+    return true;
+}
+
+md.inline.ruler.after('escape', 'math_inline', mathInline);
+md.block.ruler.before('fence', 'math_block', mathBlock, { alt: ['paragraph', 'reference', 'blockquote', 'list'] });
+md.renderer.rules.math_inline = (tokens, idx) => {
+    const t = tokens[idx];
+    const cls = t.meta?.display ? 'math display' : 'math';
+    return `<span class="${cls}" data-tex="${encodeURIComponent(t.content)}">${md.utils.escapeHtml(t.content)}</span>`;
+};
+md.renderer.rules.math_block = (tokens, idx) => {
+    const tex = tokens[idx].content.trim();
+    return `<div class="math display" data-tex="${encodeURIComponent(tex)}">${md.utils.escapeHtml(tex)}</div>\n`;
+};
+
+// Images are filled in later (from Drive, or the web for http links).
+md.renderer.rules.image = (tokens, idx) => {
+    const t = tokens[idx];
+    const alt = md.utils.escapeHtml(t.children ? md.renderer.renderInlineAsText(t.children, md.options, {}) : t.content);
+    const title = t.attrGet('title');
+    return `<img data-src="${md.utils.escapeHtml(t.attrGet('src') ?? '')}" alt="${alt}"${title ? ` title="${md.utils.escapeHtml(title)}"` : ''} loading="lazy">`;
+};
+
 md.renderer.rules.fence = (tokens, idx) => {
     const t = tokens[idx];
     const lang = (t.info || '').trim().split(/\s+/)[0];
+    if (lang === 'mermaid') {
+        // Encoded: the sanitizer drops attribute values containing "-->".
+        return `<div class="mermaid-block" data-src="${encodeURIComponent(t.content)}"><pre class="code"><code>${md.utils.escapeHtml(t.content)}</code></pre></div>\n`;
+    }
     const label = lang ? `<span class="code-lang">${md.utils.escapeHtml(lang)}</span>` : '';
     return `<pre class="code">${label}<code>${md.utils.escapeHtml(t.content)}</code></pre>\n`;
 };
@@ -52,7 +155,7 @@ export function renderMarkdown(body) {
         });
         hooked = true;
     }
-    return DOMPurify.sanitize(md.render(body), { ADD_ATTR: ['data-line', 'target'], FORBID_TAGS: ['style', 'form'] });
+    return DOMPurify.sanitize(md.render(body), { ADD_ATTR: ['data-line', 'target', 'data-src', 'data-tex', 'loading'], FORBID_TAGS: ['style', 'form'] });
 }
 
 /** Toggle the checkbox of the list item starting at a body line. */
@@ -61,4 +164,9 @@ export function toggleTask(body, line, checked) {
     if (line < 0 || line >= lines.length) return body;
     lines[line] = lines[line].replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/, `$1[${checked ? 'x' : ' '}]`);
     return lines.join('\n');
+}
+
+/** Unsanitized HTML, for tests. */
+export function renderUnsafeForTests(body) {
+    return md.render(body);
 }

@@ -83,10 +83,13 @@ Fork-only work. Nothing here is pushed to upstream KDE.
       the fake servers; the flow follows Google's documented installed-app flow).
 
 ### Web app follow-ups
-- [ ] Show images stored next to notes (fetch from Drive as blobs).
-- [ ] Mermaid and math rendering (lazy-loaded).
-- [ ] Drag and drop in the tree; incremental Drive listing (changes API).
+- [x] Images (Drive blobs, offline cache, camera/paste/drop upload), math (KaTeX),
+      Mermaid, live-preview editor with `/` menu, tree drag and drop.
+- [ ] Incremental Drive listing (changes API) for big notebooks.
 - [ ] Encrypted notebooks once the crypto format exists (libsodium.js).
+- [ ] Desktop: write relative image links (e.g. for sketches) instead of
+      absolute `file://` paths; the web app already resolves both.
+- [ ] Desktop: render math (the web app uses the same `$…$` / `$$…$$` syntax).
 
 ### Android app (native; the PWA may be enough)
 - [ ] Same codebase (Kirigami is convergent; upstream CI already builds Android).

@@ -3,13 +3,15 @@
 
 import { useEffect, useRef } from 'preact/hooks';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { basicSetup } from 'codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { indentWithTab } from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
+import { livePreview } from './livepreview.js';
+import { slashSource } from './slash.js';
 
 const markdownStyle = HighlightStyle.define([
     { tag: t.heading1, fontWeight: '700', fontSize: '1.45em' },
@@ -69,6 +71,13 @@ export const actions = {
     italic: (v) => wrap(v, '*'),
     code: (v) => wrap(v, '`', '`', 'code'),
     link: (v) => wrap(v, '[', '](https://)', 'link'),
+    insert: (v, text) => {
+        const { from, to } = v.state.selection.main;
+        const line = v.state.doc.lineAt(from);
+        const pre = from > line.from && !/\s$/.test(line.text.slice(0, from - line.from)) ? ' ' : '';
+        v.dispatch({ changes: { from, to, insert: pre + text }, selection: { anchor: from + pre.length + text.length } });
+        v.focus();
+    },
     heading: (v) => prefixLines(v, '## '),
     bullet: (v) => prefixLines(v, '- '),
     task: (v) => prefixLines(v, '- [ ] '),
@@ -89,12 +98,21 @@ const theme = EditorView.theme({
  * Markdown source editor. onChange gets the full text (debounced by the caller).
  * Exposes the EditorView through viewRef for the toolbar.
  */
-export function Editor({ value, onChange, viewRef, autoFocus }) {
+export function Editor({ value, onChange, viewRef, autoFocus, live = true, resolveImage, onImage, onImageFiles }) {
     const host = useRef(null);
     const changeRef = useRef(onChange);
     changeRef.current = onChange;
+    const imageRef = useRef(onImage);
+    imageRef.current = onImage;
+    const filesRef = useRef(onImageFiles);
+    filesRef.current = onImageFiles;
+    const resolveRef = useRef(resolveImage);
+    resolveRef.current = resolveImage;
+    const mode = useRef(new Compartment());
+    const preview = () => (live ? [livePreview((src) => resolveRef.current?.(src) ?? Promise.resolve({ missing: src })), EditorView.editorAttributes.of({ class: 'cm-live' })] : [EditorView.editorAttributes.of({ class: 'cm-source' })]);
 
     useEffect(() => {
+        const slashData = [{ autocomplete: slashSource(() => imageRef.current?.()) }];
         const view = new EditorView({
             parent: host.current,
             state: EditorState.create({
@@ -106,7 +124,28 @@ export function Editor({ value, onChange, viewRef, autoFocus }) {
                         { key: 'Mod-b', run: (v) => (actions.bold(v), true) },
                         { key: 'Mod-i', run: (v) => (actions.italic(v), true) },
                     ]),
-                    markdown({ base: markdownLanguage, codeLanguages: languages }),
+                    markdown({ base: markdownLanguage, codeLanguages: languages, completeHTMLTags: false }),
+                    // One source object: autocomplete tells sources apart by identity.
+                    EditorState.languageData.of(() => slashData),
+                    mode.current.of(preview()),
+                    EditorView.domEventHandlers({
+                        paste(e) {
+                            const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+                            if (!files.length || !filesRef.current) return false;
+                            e.preventDefault();
+                            filesRef.current(files);
+                            return true;
+                        },
+                        drop(e, view) {
+                            const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+                            if (!files.length || !filesRef.current) return false;
+                            e.preventDefault();
+                            const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                            if (pos !== null) view.dispatch({ selection: { anchor: pos } });
+                            filesRef.current(files);
+                            return true;
+                        },
+                    }),
                     syntaxHighlighting(markdownStyle, { fallback: false }),
                     EditorView.lineWrapping,
                     placeholder('Write in Markdown…'),
@@ -119,12 +158,17 @@ export function Editor({ value, onChange, viewRef, autoFocus }) {
             }),
         });
         if (viewRef) viewRef.current = view;
+       
         if (autoFocus) view.focus();
         return () => {
             view.destroy();
             if (viewRef) viewRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        viewRef?.current?.dispatch({ effects: mode.current.reconfigure(preview()) });
+    }, [live]);
 
     // Text replaced from outside (conflict resolution, reload): reset the doc.
     useEffect(() => {

@@ -29,7 +29,8 @@ self.addEventListener('fetch', (event) => {
         return;
     }
     event.respondWith(caches.match(event.request).then((hit) => hit ?? fetch(event.request).then((res) => {
-        if (res.ok && url.pathname.includes('/chunks/')) {
+        // Loaded on demand (editor languages, KaTeX, Mermaid): cache once used.
+        if (res.ok && (url.pathname.includes('/chunks/') || url.pathname.includes('/katex/'))) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(event.request, copy));
         }

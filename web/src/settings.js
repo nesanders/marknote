@@ -17,6 +17,7 @@ export const defaults = {
     lastNotebook: '',
     lastNote: '',
     expanded: {},
+    editorMode: 'live', // live | source
 };
 
 export function loadSettings() {

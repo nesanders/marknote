@@ -42,7 +42,7 @@ export class FakeDrive {
         const node = { id, name, mimeType, parents: [parentId], trashed: false, createdTime: created ?? now, modifiedTime: now };
         if (mimeType !== FOLDER) {
             node.content = content;
-            node.md5Checksum = hash(content);
+            node.md5Checksum = typeof content === 'string' ? hash(content) : hash(`${content.size}:${this.next}`);
         }
         this.nodes.set(id, node);
         return node;
@@ -101,6 +101,12 @@ export class FakeDrive {
     async getText(fileId) {
         await this.tick();
         return this.live(fileId).content;
+    }
+
+    async getBlob(fileId) {
+        await this.tick();
+        const c = this.live(fileId).content;
+        return typeof c === 'string' ? new Blob([c]) : c;
     }
 
     async getMeta(fileId) {
@@ -210,7 +216,7 @@ export function seedDemo(drive) {
     note(overhaul, 'Design notes', { created: daysAgo(3), icon: '🎨', tags: ['design', 'planning'] },
         '# Design notes\n\nThe tree should feel like **Dolphin**: folders first, then notes.\n\n## Open questions\n\n- [x] Menu bar or hamburger?\n- [ ] How dense should rows be?\n- [ ] Mobile layout\n\n> Keep the editor calm: metadata lives in its own strip.\n');
     note(overhaul, 'Feature list', { created: daysAgo(2), tags: ['planning'] },
-        '# Feature list\n\n| Feature | Desktop | Web |\n|---|---|---|\n| Tags | ✅ | ✅ |\n| Icons | ✅ | ✅ |\n| Sync | ✅ | Drive |\n\n```js\nconst answer = 42;\n```\n');
+        '# Feature list\n\nA desktop sketch (absolute file link, as Marknote desktop writes it):\n\n![](file:///home/me/Documents/Notes/Projects/Marknote%20overhaul/Feature%20list_1732400000000.svg)\n\n| Feature | Desktop | Web |\n|---|---|---|\n| Tags | ✅ | ✅ |\n| Icons | ✅ | ✅ |\n| Sync | ✅ | Drive |\n\n```js\nconst answer = 42;\n```\n');
     note(research, 'Dolphin tree behaviour', { created: daysAgo(6), icon: '🐬', tags: ['kde', 'reference'] },
         '# Dolphin tree behaviour\n\nExpand with the arrow, rename with F2, drag to move.\n');
     note(research, 'Notion slash menu', { created: daysAgo(5), tags: ['reference'] }, '# Notion slash menu\n\nType `/` to insert a block.\n');
@@ -220,6 +226,15 @@ export function seedDemo(drive) {
         '# Long checklist\n\n- [ ] Buy milk\n- [x] Write sync engine\n- [ ] Try the web app on the phone\n- [ ] Create the OAuth client\n');
     drive.add(projects.id, 'Scratch.md', 'text/markdown', '# Scratch\n\nA plain note without front matter.\n');
     note(projects, 'Weekly sync', { created: daysAgo(7), icon: '🗓️', tags: ['meetings'] }, '# Weekly sync\n\n1. Status\n2. Blockers\n3. Next steps\n');
+    const sketch = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="140" viewBox="0 0 320 140"><rect width="320" height="140" rx="10" fill="#e8f4fb"/><circle cx="70" cy="70" r="38" fill="#3daee9"/><rect x="130" y="40" width="150" height="16" rx="8" fill="#2d7fb8"/><rect x="130" y="70" width="110" height="12" rx="6" fill="#93cee9"/><rect x="130" y="92" width="130" height="12" rx="6" fill="#93cee9"/></svg>';
+    drive.add(overhaul.id, 'Feature list_1732400000000.svg', 'image/svg+xml', sketch.replace('3daee9', 'f67400'));
+    drive.add(projects.id, 'Rich note_1732400000000.svg', 'image/svg+xml', sketch);
+    note(projects, 'Rich note', { created: daysAgo(1), icon: '✨', tags: ['demo'] },
+        '# Rich note\n\nMath inline, like $e^{i\\pi} + 1 = 0$, and as a block:\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\n'
+        + '## Diagram\n\n```mermaid\ngraph LR\n    Desktop -->|sync| Drive\n    Drive --> Phone\n```\n\n'
+        + '## Image\n\n![A sketch](Rich%20note_1732400000000.svg)\n\n'
+        + '## Table\n\n| Feature | Desktop | Web |\n| --- | --- | --- |\n| Math | soon | ✅ |\n| Diagrams | ✅ | ✅ |\n\n'
+        + '- [ ] Tick me\n- [x] Already done\n\n> Click any rendered block while editing to change its source.\n');
     note(personal, 'Recipes', { created: daysAgo(12), icon: '🍲', tags: ['home'] }, '# Recipes\n\n## Lentil soup\n\nOnion, carrots, lentils, stock. 30 minutes.\n');
     note(journal, iso(daysAgo(1)).slice(0, 10), { created: daysAgo(1), tags: ['journal'] }, '# Yesterday\n\nTried Marknote on the phone.\n');
     return drive;

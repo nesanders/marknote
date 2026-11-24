@@ -10,17 +10,36 @@ front matter (`id`, `created`, `icon`, `tags`), folder icons in `.directory` fil
 **Try it without an account:** open the app with `?demo` (sample notes in memory,
 nothing is saved).
 
-<img src="../screenshots/web/desktop.png" width="640" alt="Marknote web on a wide screen">
+<img src="../screenshots/web/desktop.png" width="640" alt="Marknote web on a wide screen: a note with math, a diagram, an image and a table">
 <img src="../screenshots/web/phone.png" width="640" alt="Marknote web on a phone: notes, a note, editing">
+
+<img src="../screenshots/web/live-editor.png" width="320" alt="Live preview editor with rendered math, diagram and image"> <img src="../screenshots/web/slash-menu.png" width="320" alt="Slash menu"> <img src="../screenshots/web/drag.png" width="320" alt="Dragging a note onto a folder">
 
 ## What it does
 
 - Notebooks, folder tree (expand/collapse), note icons/emoji and tags, created dates.
 - Filter by name or `tag:name`, tag chips with *All tags* / *Any tag*, *Contents* to
   search inside notes, tag list with counts.
-- Read notes rendered; tick checklist items directly; edit the Markdown with a
-  formatting bar (bold, italic, heading, list, checklist, quote, code, link). Edits
-  save automatically. The front matter is never shown in the editor and is kept.
+- Read notes rendered, with **math** (`$…$`, `$$…$$`, KaTeX), **Mermaid diagrams**,
+  **images**, tables and code; tick checklist items directly.
+- **Live preview editor:** formatting shows as you write and the Markdown syntax
+  appears only on the line you are editing. Checkboxes tick, and images, math,
+  diagrams and tables are rendered; tap one to edit its source. The text is kept
+  exactly as written, so desktop and web never reformat each other's notes.
+  *Source* shows the plain Markdown. Edits save automatically; the front matter is
+  never shown and is kept.
+- **`/` menu** at the start of a line inserts blocks (headings, lists, checklist,
+  quote, code, table, divider, math, diagram, image), like the desktop slash menu.
+  A formatting bar (bold, italic, heading, list, checklist, quote, code, link,
+  image) sits at the bottom.
+- **Images:** add from a file or the phone camera, or paste/drop them into the
+  editor. They are stored next to the note as `<Note>_<timestamp>.<ext>` (the
+  desktop's sketch naming) and linked relatively. Desktop links of the form
+  `file:///…/Notes/<Notebook>/…` are found in the notebook too. Images you viewed are
+  kept for offline use.
+- **Drag and drop** in the tree, as on the desktop: onto a folder moves into it, onto
+  a note moves next to it, onto empty space moves to the top level. With touch, hold
+  a note, then drag (hold and release opens its menu).
 - New note / folder, rename, move, delete (to the Drive trash), set icon, edit tags,
   new notebook.
 - **Never overwrites another device's edit.** A note is only saved over the version
@@ -93,9 +112,10 @@ The site is plain static files built with esbuild (Preact, CodeMirror 6,
 markdown-it, DOMPurify) and deployed to GitHub Pages by
 `.github/workflows/web-pages.yml`.
 
-## Not yet
+## Limits
 
-- Images inside notes are not shown (they live as separate files in Drive).
-- Mermaid diagrams and math are shown as code.
-- No WYSIWYG block editor like the desktop app; the web app edits Markdown text.
-- Moving notes by drag and drop (use *Move…*).
+- No WYSIWYG block editor like the desktop app: the web app edits Markdown with a
+  live preview instead (this keeps notes byte-for-byte as written).
+- Adding images, moving, renaming and deleting need a connection; text edits and new
+  notes work offline.
+- Math and diagram libraries load the first time a note uses them (cached afterwards).

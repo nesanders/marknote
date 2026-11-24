@@ -11,7 +11,10 @@ export function Dialog({ title, onClose, children, footer, wide }) {
     useEffect(() => {
         const key = (e) => e.key === 'Escape' && onClose();
         document.addEventListener('keydown', key);
-        const focusable = ref.current?.querySelector('[autofocus], input, button.primary, button');
+        // A field first, then the main button; never the close button by accident.
+        const root = ref.current;
+        const focusable = root?.querySelector('.dialog-body input:not([type=hidden]):not([readonly]), .dialog-body textarea, .dialog-body select')
+            ?? root?.querySelector('footer button.primary, footer button.danger, .dialog-body button, footer button');
         focusable?.focus();
         return () => document.removeEventListener('keydown', key);
     }, []);

@@ -14,6 +14,55 @@ import { AuthError, OfflineError } from './drive.js';
 import * as FM from './frontmatter.js';
 
 export const NOTE_SUFFIX = '.md';
+export const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', bmp: 'image/bmp' };
+
+export function isImageName(name) {
+    const dot = name.lastIndexOf('.');
+    return dot > 0 && Object.hasOwn(IMAGE_TYPES, name.slice(dot + 1).toLowerCase());
+}
+
+/** Join and normalize "a/b" + "../c" style paths (no leading slash). */
+export function joinPath(base, relative) {
+    const parts = base ? base.split('/') : [];
+    for (const part of relative.split('/')) {
+        if (part === '..') parts.pop();
+        else if (part && part !== '.') parts.push(part);
+    }
+    return parts.join('/');
+}
+
+/**
+ * Where an image link in a note points inside the notebook, as a path relative
+ * to the notebook root, or { external } for web URLs. Desktop Marknote writes
+ * absolute "file:///home/…/Notes/<Notebook>/…" links; those are mapped by the
+ * notebook folder name, else by file name.
+ */
+export function resolveAssetPath(src, notePath, notebookName, filesByPath) {
+    let s = (src ?? '').trim();
+    if (/^(https?:|data:image\/)/i.test(s)) return { external: s };
+    try {
+        s = decodeURI(s);
+    } catch {
+        // keep as written
+    }
+    const noteDir = notePath.split('/').slice(0, -1).join('/');
+    if (/^file:/i.test(s) || s.startsWith('/') || /^[a-z]:[\\/]/i.test(s)) {
+        const abs = s.replace(/^file:\/\/(localhost)?/i, '').replaceAll('\\', '/');
+        const marker = `/${notebookName}/`;
+        const at = abs.lastIndexOf(marker);
+        if (at >= 0) {
+            const rel = abs.slice(at + marker.length);
+            if (filesByPath.has(rel)) return { path: rel };
+        }
+        const base = abs.split('/').pop();
+        const sameName = [...filesByPath.keys()].filter((p) => p.split('/').pop() === base);
+        if (sameName.length === 1) return { path: sameName[0] };
+        const nextToNote = joinPath(noteDir, base);
+        return filesByPath.has(nextToNote) ? { path: nextToNote } : { missing: base };
+    }
+    const rel = joinPath(noteDir, s.split('#')[0].split('?')[0]);
+    return filesByPath.has(rel) ? { path: rel } : { missing: s };
+}
 const NOTEBOOKS_KEY = '__notebooks__';
 
 export function noteName(fileName) {
@@ -108,6 +157,8 @@ export class Library extends EventTarget {
         this.notebooks = [];
         this.notebook = null;
         this.items = new Map();
+        this.files = new Map(); // relative path -> image file in this notebook
+        this.blobUrls = new Map(); // file id -> object URL
         this.texts = new Map(); // id -> note text (this notebook)
         this.saveChains = new Map(); // id -> promise of the running upload
         this.saveSeq = new Map(); // id -> number of the newest save
@@ -205,6 +256,7 @@ export class Library extends EventTarget {
     async openNotebook(nb) {
         this.notebook = nb;
         this.items = new Map();
+        this.files = new Map();
         this.texts = new Map();
         const cached = await this.store.get('listings', nb.id);
         if (cached) {
@@ -233,10 +285,15 @@ export class Library extends EventTarget {
     async applyListing(listing, fetchMissing) {
         const nb = this.notebook;
         const items = new Map();
+        const files = new Map();
         const dirFiles = new Map(); // folder id -> .directory file
         for (const f of listing) {
             if (f.name === '.directory') {
                 dirFiles.set(f.parentId, f);
+                continue;
+            }
+            if (!f.isFolder && isImageName(f.name)) {
+                files.set(f.path, { id: f.id, name: f.name, path: f.path, md5: f.md5Checksum ?? '', mimeType: f.mimeType });
                 continue;
             }
             if (!f.isFolder && !f.name.endsWith(NOTE_SUFFIX)) continue;
@@ -288,6 +345,7 @@ export class Library extends EventTarget {
             }
         }
         this.items = items;
+        this.files = files;
         for (const item of notes) this.applyMeta(item);
         this.emit('tree');
 
@@ -372,6 +430,60 @@ export class Library extends EventTarget {
             this.applyMeta(item);
             return text;
         });
+    }
+
+    // ---- Images --------------------------------------------------------------
+
+    /** Live path of a note (folders may have been renamed or moved since listing). */
+    pathOf(id) {
+        const parts = [];
+        for (let i = this.items.get(id); i; i = i.parentId ? this.items.get(i.parentId) : null) parts.unshift(i.name);
+        return parts.join('/');
+    }
+
+    resolveImage(noteId, src) {
+        return resolveAssetPath(src, this.pathOf(noteId), this.notebook?.name ?? '', this.files);
+    }
+
+    /** An object URL for an image file, from this device's cache or Drive. */
+    async imageUrl(file) {
+        if (this.blobUrls.has(file.id)) return this.blobUrls.get(file.id);
+        const key = `blob:${file.id}`;
+        let blob = null;
+        const cached = await this.store.get('content', key);
+        if (cached && (cached.md5 === file.md5 || !this.online)) blob = cached.blob;
+        if (!blob) {
+            blob = await this.guard(() => this.drive.getBlob(file.id));
+            const type = IMAGE_TYPES[file.name.split('.').pop().toLowerCase()];
+            if (type && blob.type !== type) blob = new Blob([blob], { type });
+            await this.store.set('content', key, { md5: file.md5, blob });
+        }
+        const url = URL.createObjectURL(blob);
+        this.blobUrls.set(file.id, url);
+        return url;
+    }
+
+    /**
+     * Store an image next to a note as "<Note>_<timestamp>.<ext>" (the desktop
+     * sketch naming) and return the relative link for the note.
+     */
+    async addImage(noteId, blob, fileName = '') {
+        const note = this.items.get(noteId);
+        if (note.id.startsWith('local-')) throw new Error('Wait until the note is uploaded before adding images.');
+        const fromName = fileName.split('.').pop()?.toLowerCase();
+        const fromType = Object.entries(IMAGE_TYPES).find(([, t]) => t === blob.type)?.[0];
+        const ext = isImageName(fileName) ? fromName : fromType ?? 'png';
+        const names = new Set([...this.files.values()].map((f) => f.path));
+        const dir = this.pathOf(note.parentId ?? '') ;
+        let name = `${note.title}_${Date.now()}.${ext}`.replaceAll('/', '-');
+        while (names.has(dir ? `${dir}/${name}` : name)) name = `${note.title}_${Date.now() + 1}.${ext}`;
+        const file = await this.guard(() => this.drive.createFile(note.driveParentId, name, blob, IMAGE_TYPES[ext] ?? blob.type));
+        const path = note.parentId ? `${this.pathOf(note.parentId)}/${name}` : name;
+        const entry = { id: file.id, name, path, md5: file.md5Checksum ?? '', mimeType: file.mimeType };
+        this.files.set(path, entry);
+        await this.store.set('content', `blob:${file.id}`, { md5: entry.md5, blob });
+        this.emit('tree');
+        return encodeURI(name);
     }
 
     // ---- Writing -----------------------------------------------------------

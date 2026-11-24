@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as FM from '../frontmatter.js';
 import { renderMarkdown, toggleTask } from '../markdown.js';
+import { enhance } from '../extras.js';
 import { Editor, actions } from './Editor.jsx';
 import { Icon, ItemIcon } from './icons.jsx';
 
@@ -27,13 +28,38 @@ export function formatCreated(date) {
  * One note: metadata strip, rendered Markdown, or the source editor.
  * Edits autosave; "status" reports Saving…/Saved/Waiting to upload/conflict.
  */
-export function NoteView({ library, item, editing, setEditing, onBack, onMenu, onIcon, onTags, onOpenPath, showBack, toast, revision }) {
+export function NoteView({ library, item, editing, setEditing, onBack, onMenu, onIcon, onTags, onOpenPath, showBack, toast, revision, live = true, setLive }) {
     const [text, setText] = useState(() => library.text(item.id));
     const [error, setError] = useState('');
     const [status, setStatus] = useState('');
     const pending = useRef(null); // body waiting to be saved
     const timer = useRef(null);
     const viewRef = useRef(null);
+    const articleRef = useRef(null);
+    const fileInput = useRef(null);
+    const [uploading, setUploading] = useState(0);
+
+    const resolveImage = async (src) => {
+        const r = library.resolveImage(item.id, src);
+        if (r.external) return { url: r.external };
+        if (r.path) return { url: await library.imageUrl(library.files.get(r.path)) };
+        return r;
+    };
+
+    const addImages = async (files) => {
+        for (const file of files) {
+            setUploading((n) => n + 1);
+            try {
+                const link = await library.addImage(item.id, file, file.name);
+                const alt = (file.name || 'Image').replace(/\.[^.]+$/, '').replace(/[[\]]/g, '');
+                if (viewRef.current) actions.insert(viewRef.current, `![${alt}](${link})`);
+            } catch (e) {
+                toast(library.online ? `Could not add the image: ${e.message}` : 'Adding images needs a connection.', 'error');
+            } finally {
+                setUploading((n) => n - 1);
+            }
+        }
+    };
 
     // Load (or reload when the note changes underneath, e.g. after a refresh).
     useEffect(() => {
@@ -102,6 +128,11 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
 
     const html = useMemo(() => (editing || text === undefined ? '' : renderMarkdown(split.body)), [split.body, editing, text]);
 
+    // Math, diagrams and images, once the HTML is in the page.
+    useEffect(() => {
+        if (!editing && articleRef.current) enhance(articleRef.current, { images: resolveImage }).catch(() => {});
+    }, [html, editing, revision]);
+
     const onContentClick = async (e) => {
         const box = e.target.closest('input.task');
         if (box) {
@@ -135,7 +166,11 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
             <header class="toolbar">
                 {showBack && <button class="icon-button" onClick={onBack} aria-label="Back to notes"><Icon name="back" /></button>}
                 <h1 class="note-title">{item.title}</h1>
-                <span class="save-status" aria-live="polite">{status}</span>
+                <span class="save-status" aria-live="polite">{uploading ? 'Uploading image…' : status}</span>
+                {editing && setLive && (
+                    <button class={'toggle small' + (live ? '' : ' on')} aria-pressed={!live} title="Show the Markdown source"
+                        onClick={() => setLive(!live)}>Source</button>
+                )}
                 <button class={'icon-button' + (editing ? ' active' : '')} onClick={() => setEditing(!editing)}
                     aria-label={editing ? 'Done editing' : 'Edit note'} title={editing ? 'Done (Esc)' : 'Edit'}>
                     <Icon name={editing ? 'check' : 'edit'} />
@@ -157,18 +192,24 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
             {text === undefined && !error && <p class="hint pad">Loading…</p>}
             {text !== undefined && (editing ? (
                 <>
-                    <Editor value={split.body} onChange={onChange} viewRef={viewRef} autoFocus />
+                    <Editor value={split.body} onChange={onChange} viewRef={viewRef} autoFocus live={live}
+                        resolveImage={resolveImage} onImage={() => fileInput.current?.click()} onImageFiles={addImages} />
+                    <input ref={fileInput} type="file" accept="image/*" multiple hidden
+                        onChange={(e) => {
+                            addImages([...e.target.files]);
+                            e.target.value = '';
+                        }} />
                     <div class="format-bar" role="toolbar" aria-label="Formatting">
-                        {[['bold', 'Bold'], ['italic', 'Italic'], ['heading', 'Heading'], ['bullet', 'List', 'list'], ['task', 'Checklist', 'checklist'], ['quote', 'Quote'], ['code', 'Code'], ['link', 'Link']].map(([a, label, icon]) => (
+                        {[['bold', 'Bold'], ['italic', 'Italic'], ['heading', 'Heading'], ['bullet', 'List', 'list'], ['task', 'Checklist', 'checklist'], ['quote', 'Quote'], ['code', 'Code'], ['link', 'Link'], ['image', 'Image', 'image']].map(([a, label, icon]) => (
                             <button class="icon-button" aria-label={label} title={label} onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => viewRef.current && actions[a](viewRef.current)}>
+                                onClick={() => (a === 'image' ? fileInput.current?.click() : viewRef.current && actions[a](viewRef.current))}>
                                 <Icon name={icon ?? a} />
                             </button>
                         ))}
                     </div>
                 </>
             ) : (
-                <article class="rendered" onClick={onContentClick} onDblClick={(e) => !e.target.closest('a,input') && setEditing(true)}
+                <article class="rendered" ref={articleRef} onClick={onContentClick} onDblClick={(e) => !e.target.closest('a,input') && setEditing(true)}
                     dangerouslySetInnerHTML={{ __html: html || '<p class="hint">Empty note. Tap ✎ to write.</p>' }} />
             ))}
         </section>

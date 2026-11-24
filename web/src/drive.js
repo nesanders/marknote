@@ -129,16 +129,22 @@ export class DriveApi {
         return res.text();
     }
 
+    async getBlob(fileId) {
+        const res = await this.request('GET', `/drive/v3/files/${encodeURIComponent(fileId)}`, { query: { alt: 'media' }, raw: true });
+        return res.blob();
+    }
+
     async getMeta(fileId) {
         return this.request('GET', `/drive/v3/files/${encodeURIComponent(fileId)}`, { query: { fields: FIELDS } });
     }
 
+    /** @param text string or Blob (images) */
     async createFile(parentId, name, text, mimeType = 'text/markdown') {
         const boundary = 'marknote' + crypto.getRandomValues(new Uint32Array(2)).join('');
         const metadata = JSON.stringify({ name, parents: [parentId], mimeType });
         const body = new Blob([
             `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
-            `--${boundary}\r\nContent-Type: ${mimeType}; charset=UTF-8\r\n\r\n`,
+            `--${boundary}\r\nContent-Type: ${mimeType}${typeof text === 'string' ? '; charset=UTF-8' : ''}\r\n\r\n`,
             text,
             `\r\n--${boundary}--\r\n`,
         ]);

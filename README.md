@@ -88,9 +88,9 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 
 **Web app for phones** (branch `feature/pwa`, folder [`web/`](web/README.md))
 - An installable web app (PWA) for Android and iPhone that opens the same notebooks from
-  Google Drive: tree, tags, filter, icons, rendered notes with tappable checklists, a
-  Markdown editor, offline copy with edits uploaded later, and conflict copies instead
-  of overwrites. Try it with `?demo`; setup is in [web/README.md](web/README.md).
+  Google Drive: tree with drag and drop, tags, filter, icons, notes with math, Mermaid
+  diagrams and images, a live-preview Markdown editor with a `/` menu, photo upload,
+  an offline copy with edits uploaded later, and conflict copies instead of overwrites. Try it with `?demo`; setup is in [web/README.md](web/README.md).
 
 ### Setting up Google Drive sync
 

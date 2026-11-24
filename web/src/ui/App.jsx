@@ -537,7 +537,19 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             </div>
             {loading && !library.items.size ? <p class="hint pad">Loading…</p> : (
                 <Tree library={library} visible={visible} selectedId={noteId} settings={settings} setSettings={setSettings}
-                    onOpen={openNote} onMenu={itemMenu} />
+                    onOpen={openNote} onMenu={itemMenu}
+                    onMove={(item, parentId) => {
+                        if (!library.online) {
+                            toast('Moving needs a connection.', 'warning');
+                            return;
+                        }
+                        library.move(item.id, parentId)
+                            .then(() => {
+                                if (parentId) setSettings((s) => ({ ...s, expanded: { ...s.expanded, [parentId]: true } }));
+                                toast(`Moved “${item.title}” to ${parentId ? `“${library.items.get(parentId)?.title}”` : 'the top level'}.`);
+                            })
+                            .catch((e) => toast(e.message, 'error'));
+                    }} />
             )}
             <footer class="tree-footer">{counts.folders} folders, {counts.notes} notes{loading && library.items.size ? ' · updating…' : ''}</footer>
         </section>
@@ -545,6 +557,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
 
     const notePanel = note ? (
         <NoteView key={note.id} library={library} item={note} editing={editing} setEditing={setEditing} revision={rev}
+            live={settings.editorMode !== 'source'} setLive={(on) => setSettings((s) => ({ ...s, editorMode: on ? 'live' : 'source' }))}
             showBack={!wide} onBack={() => history.back()} toast={toast} onOpenPath={openPath}
             onMenu={() => itemMenu(note)} onIcon={() => pickIcon(note)} onTags={() => editTags(note)} />
     ) : (

@@ -25,7 +25,10 @@ async function shot(page, name) {
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, name + '.png') });
 }
 
+let lastPage = null;
+
 function watch(page, errors) {
+    lastPage = page;
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && !/favicon|ERR_FAILED/.test(m.text()) && errors.push(m.text()));
 }
@@ -49,7 +52,8 @@ function fakeGoogle() {
     const root = add('root', 'Marknote', FOLDER);
     const nb = add(root.id, 'Work', FOLDER);
     add(nb.id, '.directory', 'text/plain', '[Desktop Entry]\nX-MarkNote-Color=#3a8a55\nX-Marknote-Emoji=💼\n');
-    add(nb.id, 'Plan.md', 'text/markdown', '---\nid: 01ABC\ntags: [work]\n---\n\n# Plan\n\n- [ ] Ship the web app\n');
+    add(nb.id, 'Plan.md', 'text/markdown', '---\nid: 01ABC\ntags: [work]\n---\n\n# Plan\n\n- [ ] Ship the web app\n\n![chart](Plan_1.svg)\n');
+    add(nb.id, 'Plan_1.svg', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>');
     const view = ({ content, trashed, ...rest }) => rest;
     const requests = [];
     async function handle(route) {
@@ -73,7 +77,7 @@ function fakeGoogle() {
             return json(view(add(body.parents[0], body.name, body.mimeType)));
         }
         if (p === '/upload/drive/v3/files' && req.method() === 'POST') {
-            const raw = req.postDataBuffer().toString('utf8');
+            const raw = req.postDataBuffer().toString('latin1');
             const parts = raw.split(/--marknote\d+/);
             const meta = JSON.parse(parts[1].split('\r\n\r\n')[1]);
             const content = parts[2].split('\r\n\r\n').slice(1).join('\r\n\r\n').replace(/\r\n$/, '');
@@ -92,7 +96,7 @@ function fakeGoogle() {
             const n = nodes.get(m[1]);
             if (!n || n.trashed) return json({ error: { message: 'File not found' } }, 404);
             if (req.method() === 'GET') {
-                if (url.searchParams.get('alt') === 'media') return route.fulfill({ status: 200, contentType: 'text/plain', body: n.content });
+                if (url.searchParams.get('alt') === 'media') return route.fulfill({ status: 200, contentType: n.mimeType, body: n.content });
                 return json(view(n));
             }
             if (req.method() === 'PATCH') {
@@ -196,6 +200,131 @@ async function demoDesktop(browser, errors) {
     await page.close();
 }
 
+async function demoRich(browser, errors) {
+    const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.getByRole('button', { name: /Projects/ }).click();
+    await page.click('.row:has-text("Rich note")');
+    // Reading: math, diagram, image, table.
+    await page.waitForSelector('.rendered .katex', { timeout: 15000 });
+    assert.equal(await page.locator('.rendered .katex').count(), 2);
+    await page.waitForSelector('.rendered .mermaid-block svg', { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelector('.rendered img')?.src.startsWith('blob:'));
+    assert.equal(await page.locator('.rendered table').count(), 1);
+    await shot(page, 'rich-read');
+
+    // Desktop-style absolute file:// image link resolves to the file in the notebook.
+    await page.click('.row:has-text("Marknote overhaul")');
+    await page.click('.row:has-text("Feature list")');
+    await page.waitForFunction(() => document.querySelector('.rendered img')?.src.startsWith('blob:'));
+    await page.click('.row:has-text("Rich note")');
+
+    // Live preview: rendered widgets, markup hidden off the cursor line.
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-rendered-math .katex');
+    await page.waitForSelector('.cm-rendered-mermaid svg', { timeout: 15000 });
+    await page.waitForSelector('.cm-rendered-image img[src^="blob:"]');
+    await page.waitForSelector('.cm-rendered-table table');
+    assert.equal(await page.locator('.cm-line:has-text("## Diagram")').count(), 0, 'heading marks hidden');
+    await shot(page, 'rich-live');
+
+    // Tick a checkbox widget: the Markdown changes.
+    const before = await page.locator('input.cm-task').first().isChecked();
+    await page.locator('input.cm-task').first().click();
+    await page.waitForFunction((b) => document.querySelector('input.cm-task').checked !== b, before);
+
+    // Click the math block: its source shows for editing.
+    await page.locator('.cm-rendered-math.cm-rendered-block').click();
+    await page.waitForSelector('.cm-line:has-text("\\int_0^1")');
+
+    // Slash menu at the end of the note.
+    await page.click('.cm-content');
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('\n/check');
+    await page.waitForSelector('.cm-tooltip-autocomplete');
+    await shot(page, 'rich-slash');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Inserted from the slash menu');
+    await page.getByRole('button', { name: 'Source' }).click();
+    await page.waitForSelector('.cm-line:has-text("- [ ] Inserted from the slash menu")');
+    assert.ok(await page.isVisible('.cm-line:has-text("$$")'), 'source mode shows the markup');
+    await page.getByRole('button', { name: 'Source' }).click();
+
+    // Add an image from a file: stored next to the note, linked relatively.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+    await page.setInputFiles('input[type=file]', { name: 'dot.png', mimeType: 'image/png', buffer: png });
+    await page.waitForSelector('.save-status:text("Saved")', { timeout: 8000 });
+    await page.getByRole('button', { name: 'Source' }).click();
+    await page.waitForSelector('.cm-line:has-text("![dot](Rich%20note_")');
+    await page.getByRole('button', { name: 'Source' }).click();
+    await page.getByRole('button', { name: 'Done editing' }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('.rendered img')].filter((i) => i.src.startsWith('blob:')).length === 2);
+    await page.close();
+}
+
+async function demoDrag(browser, errors) {
+    // Mouse.
+    const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.getByRole('button', { name: /Projects/ }).click();
+    const dragTo = async (from, to) => {
+        const a = await page.locator(from).boundingBox();
+        const b = await page.locator(to).boundingBox();
+        await page.mouse.move(a.x + 60, a.y + a.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(a.x + 80, a.y + a.height / 2 + 10, { steps: 3 });
+        await page.mouse.move(b.x + 80, b.y + b.height / 2, { steps: 8 });
+        await shot(page, 'drag-mouse');
+        await page.mouse.up();
+    };
+    await dragTo('.row:has-text("Scratch")', '.row.folder:has-text("Reading")');
+    await page.waitForSelector('.toast:has-text("Moved “Scratch” to “Reading”")');
+    await page.click('.row.folder:has-text("Reading")'); // opened on drop; close and reopen to see
+    await page.click('.row.folder:has-text("Reading")');
+    const depth = await page.locator('.row:has-text("Scratch")').evaluate((el) => el.style.getPropertyValue('--depth'));
+    assert.equal(depth, '1');
+    // Back to the top level by dropping on empty space.
+    const tree = await page.locator('.tree').boundingBox();
+    const a = await page.locator('.row:has-text("Scratch")').boundingBox();
+    await page.mouse.move(a.x + 60, a.y + a.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(a.x + 70, a.y + 30, { steps: 3 });
+    await page.mouse.move(tree.x + 100, tree.y + tree.height - 30, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForSelector('.toast:has-text("to the top level")');
+    // A plain click still opens the note (no drag).
+    await page.click('.row:has-text("Weekly sync")');
+    await page.waitForSelector('.note-title:text("Weekly sync")');
+    await page.close();
+
+    // Touch: hold, then drag.
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    const phone = await ctx.newPage();
+    watch(phone, errors);
+    await phone.goto(BASE + '?demo');
+    await phone.click('.notebook:has-text("Projects")');
+    await phone.waitForSelector('.tree .row');
+    const cdp = await ctx.newCDPSession(phone);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    const s = await phone.locator('.row:has-text("Long checklist")').boundingBox();
+    const t = await phone.locator('.row.folder:has-text("Reading")').boundingBox();
+    await touch('touchStart', s.x + 80, s.y + s.height / 2);
+    await phone.waitForTimeout(650);
+    for (let i = 1; i <= 8; ++i) await touch('touchMove', s.x + 80, s.y + s.height / 2 + ((t.y + t.height / 2) - (s.y + s.height / 2)) * i / 8);
+    await shot(phone, 'drag-touch');
+    await touch('touchEnd', 0, 0);
+    await phone.waitForSelector('.toast:has-text("Moved “Long checklist” to “Reading”")');
+    // Hold and release without moving: the menu.
+    const w = await phone.locator('.row:has-text("Weekly sync")').boundingBox();
+    await touch('touchStart', w.x + 80, w.y + w.height / 2);
+    await phone.waitForTimeout(650);
+    await touch('touchEnd', 0, 0);
+    await phone.waitForSelector('.sheet:has-text("Weekly sync")');
+    await ctx.close();
+}
+
 async function demoPhone(browser, errors) {
     const ctx = await browser.newContext({ ...devices['Pixel 7'] });
     const page = await ctx.newPage();
@@ -269,6 +398,8 @@ async function realMode(browser, errors) {
     await page.click('.notebook:has-text("Work")');
     await page.click('.row:has-text("Plan")');
     await page.waitForSelector('.rendered h1');
+    // Images come from Drive (alt=media) as blobs.
+    await page.waitForFunction(() => document.querySelector('.rendered img')?.src.startsWith('blob:'));
     await page.locator('.rendered input.task').check();
     await page.waitForTimeout(600);
     assert.match(google.byName('Plan.md').content, /- \[x\] Ship the web app/);
@@ -324,7 +455,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo phone', demoPhone], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps) {
         try {
@@ -333,6 +464,7 @@ async function realMode(browser, errors) {
         } catch (e) {
             failed = true;
             console.log(`not ok - ${name}\n${e.stack}`);
+            if (SHOTS && lastPage && !lastPage.isClosed()) await lastPage.screenshot({ path: path.join(SHOTS, `failed-${name.replaceAll(' ', '-')}.png`) }).catch(() => {});
         }
     }
     if (errors.length) {
