@@ -141,7 +141,7 @@ void RichDocumentHandler::saveAs(const QUrl &fileUrl)
     if (treeModelToSave && !targetUrl.isEmpty()) {
         // The serializer may reformat a note. Leave a note alone until it changes.
         const QString markdown = treeModelToSave->toMarkdown();
-        if (m_savedMarkdown.contains(targetUrl) && m_savedMarkdown.value(targetUrl) == markdown)
+            if (m_savedMarkdown.contains(targetUrl) && m_savedMarkdown.value(targetUrl) == markdown)
             return;
 
         if (treeModelToSave->saveToFile(targetUrl)) {
@@ -327,6 +327,20 @@ void RichDocumentHandler::clearSearch()
 }
 
 #include "moc_rich_documenthandler.cpp"
+
+QList<QUrl> RichDocumentHandler::heldFiles() const
+{
+    QList<QUrl> urls = m_models.keys();
+    for (auto it = m_savedMarkdown.cbegin(); it != m_savedMarkdown.cend(); ++it) {
+        if (!urls.contains(it.key())) {
+            urls << it.key();
+        }
+    }
+    if (!m_fileUrl.isEmpty() && !urls.contains(m_fileUrl)) {
+        urls << m_fileUrl;
+    }
+    return urls;
+}
 
 void RichDocumentHandler::reloadFiles(const QList<QUrl> &fileUrls)
 {

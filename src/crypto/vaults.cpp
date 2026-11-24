@@ -111,6 +111,12 @@ QString Vaults::notebookOf(const QString &path)
     return {};
 }
 
+bool Vaults::hasUnlocked() const
+{
+    QMutexLocker lock(&m_mutex);
+    return !m_keys.isEmpty();
+}
+
 bool Vaults::isEncrypted(const QString &notebookOrNote) const
 {
     return !notebookOf(notebookOrNote).isEmpty();
@@ -231,6 +237,10 @@ bool Vaults::unlockWithRecoveryKey(const QString &notebook, const QString &recov
 void Vaults::lock(const QString &notebook)
 {
     const QString nb = notebookOf(notebook);
+    if (!isUnlocked(nb)) {
+        return;
+    }
+    Q_EMIT aboutToLock(nb);
     {
         QMutexLocker lock(&m_mutex);
         if (!m_keys.remove(nb)) {
@@ -388,6 +398,7 @@ bool Vaults::removeEncryption(const QString &notebook, const QString &password)
         return false;
     }
     QFile::remove(vaultFile(nb));
+    QDir().rmdir(nb + u"/.marknote"_s); // only if nothing else is in it
     {
         QMutexLocker lock(&m_mutex);
         m_keys.remove(nb);

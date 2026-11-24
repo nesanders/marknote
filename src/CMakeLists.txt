@@ -57,6 +57,10 @@ ecm_add_qml_module(marknote_static
         qml/NotebookDeleteAction.qml
         qml/NotebookMetadataDialog.qml
         qml/NotebookDeleteDialog.qml
+        qml/UnlockForm.qml
+        qml/UnlockNotebookDialog.qml
+        qml/EncryptNotebookDialog.qml
+        qml/VaultPasswordDialog.qml
         qml/ImportMaildirDialog.qml
         # Editor
         qml/EditPage.qml

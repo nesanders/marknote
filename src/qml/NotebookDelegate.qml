@@ -10,6 +10,7 @@ import QtQuick.Layouts
 import org.kde.kirigamiaddons.delegates as Delegates
 import org.kde.kirigami as Kirigami
 import org.kde.marknote
+import org.kde.ki18n
 
 Delegates.RoundedItemDelegate {
     id: root
@@ -104,7 +105,7 @@ Delegates.RoundedItemDelegate {
             id: label
             text: root.name
             width: Config.expandedSidebar
-            ? parent.width - x - (menuButton.width + countLabel.implicitWidth + Kirigami.Units.largeSpacing * 2)
+            ? parent.width - x - (menuButton.width + countLabel.implicitWidth + (lockIcon.visible ? lockIcon.width + Kirigami.Units.smallSpacing : 0) + Kirigami.Units.largeSpacing * 2)
             : Math.min(parent.width, implicitWidth)
             elide: Text.ElideRight
             y: Config.expandedSidebar ? parent.implicitHeight / 2 - height / 2 : icon.height + icon. y + Kirigami.Units.smallSpacing
@@ -146,6 +147,22 @@ Delegates.RoundedItemDelegate {
                     easing.type: mainAnim.easing.type
                 }
             }
+        }
+
+        // Encrypted notebook: closed padlock while locked, open one while unlocked.
+        Kirigami.Icon {
+            id: lockIcon
+            readonly property bool encrypted: Vaults.revision >= 0 && Vaults.isEncrypted(root.path)
+            readonly property bool isLocked: Vaults.revision >= 0 && Vaults.isLocked(root.path)
+            visible: encrypted
+            source: isLocked ? "object-locked" : "object-unlocked"
+            width: Kirigami.Units.iconSizes.small
+            height: width
+            x: Config.expandedSidebar ? label.x + Math.min(label.implicitWidth, label.width) + Kirigami.Units.smallSpacing : icon.x + icon.width - width / 2
+            y: Config.expandedSidebar ? parent.implicitHeight / 2 - height / 2 : icon.y + icon.height - height / 2
+            Controls.ToolTip.visible: lockHover.hovered
+            Controls.ToolTip.text: isLocked ? KI18n.i18nc("@info:tooltip", "Encrypted, locked") : KI18n.i18nc("@info:tooltip", "Encrypted, unlocked")
+            HoverHandler { id: lockHover }
         }
 
         Controls.Label {

@@ -68,6 +68,63 @@ Controls.Menu {
 
     Controls.MenuSeparator {}
 
+    // Encryption. Vaults.revision makes these re-evaluate after lock/unlock.
+    readonly property bool encrypted: visible && Vaults.revision >= 0 && Vaults.isEncrypted(root.path)
+    readonly property bool vaultLocked: encrypted && Vaults.isLocked(root.path)
+
+    function openDialog(type: string, props: var): void {
+        const component = Qt.createComponent("org.kde.marknote", type);
+        if (component.status !== Component.Ready) {
+            console.warn(component.errorString());
+            return;
+        }
+        // Parent to the window: the menu is destroyed when it closes.
+        const dialog = component.createObject(Controls.ApplicationWindow.window?.overlay ?? root.parent, props);
+        dialog.open();
+    }
+
+    Controls.MenuItem {
+        visible: !root.encrypted
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Encrypt Notebook…")
+        icon.name: "document-encrypt"
+        onTriggered: root.openDialog("EncryptNotebookDialog", { notebookPath: root.path, notebookName: root.name })
+    }
+
+    Controls.MenuItem {
+        visible: root.vaultLocked
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Unlock…")
+        icon.name: "object-unlocked"
+        onTriggered: root.openDialog("UnlockNotebookDialog", { notebookPath: root.path, notebookName: root.name })
+    }
+
+    Controls.MenuItem {
+        visible: root.encrypted && !root.vaultLocked
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Lock")
+        icon.name: "object-locked"
+        onTriggered: Vaults.lock(root.path)
+    }
+
+    Controls.MenuItem {
+        visible: root.encrypted
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Change Password…")
+        icon.name: "lock-edit"
+        onTriggered: root.openDialog("VaultPasswordDialog", { notebookPath: root.path, notebookName: root.name, mode: VaultPasswordDialog.Mode.Change })
+    }
+
+    Controls.MenuItem {
+        visible: root.encrypted
+        height: visible ? implicitHeight : 0
+        text: KI18n.i18nc("@action:inmenu", "Remove Encryption…")
+        icon.name: "document-decrypt"
+        onTriggered: root.openDialog("VaultPasswordDialog", { notebookPath: root.path, notebookName: root.name, mode: VaultPasswordDialog.Mode.Remove })
+    }
+
+    Controls.MenuSeparator {}
+
     Controls.MenuItem {
         text: KI18n.i18nc("@action:inmenu", "Delete Notebook")
         icon.name: "delete"

@@ -24,6 +24,7 @@ class Vaults : public QObject
 
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(int revision READ revision NOTIFY changed)
+    Q_PROPERTY(bool hasUnlocked READ hasUnlocked NOTIFY changed)
 
 public:
     static Vaults *instance();
@@ -33,6 +34,13 @@ public:
     /// The encrypted notebook containing @p path, or an empty string.
     static QString notebookOf(const QString &path);
 
+    bool hasUnlocked() const;
+    /// Show an encryption-related error to the user (via lastError).
+    void reportError(const QString &error)
+    {
+        setError(error);
+        Q_EMIT notice(error);
+    }
     Q_INVOKABLE bool isEncrypted(const QString &notebookOrNote) const;
     Q_INVOKABLE bool isUnlocked(const QString &notebookOrNote) const;
     /// Encrypted and not unlocked: its notes cannot be read now.
@@ -58,6 +66,10 @@ public:
 Q_SIGNALS:
     void changed();
     void lastErrorChanged();
+    /// A problem the window should show (not tied to an open dialog).
+    void notice(const QString &message);
+    /// About to lock: save open edits now (the key is still there).
+    void aboutToLock(const QString &notebook);
     /// A notebook was locked (the open note must be closed).
     void locked(const QString &notebook);
 

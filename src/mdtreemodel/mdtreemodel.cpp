@@ -640,10 +640,14 @@ QString MDTreeModel::toMarkdown() const
         }
     }
 
+    // Include the block being typed in (its text is parsed only when the
+    // cursor leaves it), so autosave and saves before locking keep it.
     QString markdown;
-    QTextStream stream(&markdown);
-    MD::SerialiseHelper helper;
-    doc->write(stream, &helper);
+    m_rootItem->withUnparsedApplied([&]() {
+        QTextStream stream(&markdown);
+        MD::SerialiseHelper helper;
+        doc->write(stream, &helper);
+    });
     return markdown;
 }
 

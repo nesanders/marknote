@@ -77,6 +77,11 @@ EditPage {
             root.saved = false;
             saveTimer.restart();
         }
+        // Every edit, not only the first one, schedules a save.
+        function onContentChanged() {
+            root.saved = false;
+            saveTimer.restart();
+        }
         function onInternalLinkActivated(noteName) {
             root.openNoteByName(noteName);
         }
@@ -1290,7 +1295,7 @@ EditPage {
         id: floatingEditButton
         icon.name: "document-edit"
         parent: root.Overlay.overlay
-        visible: !root.canFitToolbar && !NavigationController.sourceMode
+        visible: !root.noteLocked && !root.canFitToolbar && !NavigationController.sourceMode
         scale: mobileToolBarContainer.hidden ? 1.0 : 0.0
         property int defaultSpacing: Kirigami.Units.largeSpacing * 2
 
@@ -1507,7 +1512,7 @@ EditPage {
     Components.FloatingToolBar {
         id: toolBar
 
-        visible: root.canFitToolbar && !NavigationController.sourceMode
+        visible: !root.noteLocked && root.canFitToolbar && !NavigationController.sourceMode
         z: 600000
         parent: root.overlay
         padding: Kirigami.Units.mediumSpacing

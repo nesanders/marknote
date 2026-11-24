@@ -30,6 +30,9 @@ Kirigami.Page {
     property bool singleDocumentMode: ApplicationWindow.window ? !("currentDocument" in ApplicationWindow.window) : false
 
     property string oldPath: ''
+    // The open note is in an encrypted notebook that is locked: show the
+    // unlock form instead of the (empty) editor.
+    readonly property bool noteLocked: Vaults.revision >= 0 && root.noteFullPath.toString().length > 0 && Vaults.isLocked(root.noteFullPath)
     property bool saved: true
     property bool canFitToolbar: true
 
@@ -118,6 +121,18 @@ Kirigami.Page {
             if (root.document) {
                 root.document.clearSearch();
             }
+        }
+    }
+
+    /// Write the open note now, including text still being typed.
+    function saveNow(): void {
+        const area = root["activeTextArea"];
+        if (area && typeof area.flushTimer === "function") {
+            area.flushTimer();
+        }
+        if (root.document && root.document.fileUrl.toString().length > 0) {
+            root.document.saveAs(root.document.fileUrl);
+            root.saved = true;
         }
     }
 
@@ -700,14 +715,35 @@ Kirigami.Page {
 
     contentItem: ColumnLayout {
         spacing: 0
+        Kirigami.PlaceholderMessage {
+            id: lockedMessage
+            visible: root.noteLocked
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.margins: Kirigami.Units.gridUnit * 2
+            icon.name: "object-locked"
+            text: KI18n.i18nc("@info:placeholder", "This note is encrypted")
+            explanation: KI18n.i18nc("@info:placeholder", "Unlock the notebook to read and edit it.")
+
+            UnlockForm {
+                id: unlockForm
+                Layout.alignment: Qt.AlignHCenter
+                Layout.fillWidth: false
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 20
+                Layout.maximumWidth: Math.min(lockedMessage.width, Kirigami.Units.gridUnit * 20)
+                notebookPath: root.noteFullPath.toString()
+            }
+            onVisibleChanged: if (visible) Qt.callLater(unlockForm.focusField)
+        }
         NoteMetaStrip {
             Layout.fillWidth: true
-            visible: !NavigationController.sourceMode && root.document && root.document.fileUrl.toString().length > 0
+            visible: !root.noteLocked && !NavigationController.sourceMode && root.document && root.document.fileUrl.toString().length > 0
             noteUrl: root.document ? root.document.fileUrl : ""
             z: 2
         }
         Loader {
             id: contentLoader
+            visible: !root.noteLocked
             Layout.fillWidth: true
             Layout.fillHeight: true
             // Scrolled blocks must stay below the metadata strip, never on top of it.
@@ -814,6 +850,23 @@ Kirigami.Page {
     Component.onDestruction: {
         if (root.mainWindow && root.mainWindow.currentDocument === root.document) {
             root.mainWindow.currentDocument = null
+        }
+    }
+
+    Connections {
+        target: Vaults
+        // Locking: write pending edits while the key is still there. The
+        // document handlers then drop the plaintext themselves.
+        function onAboutToLock(notebook: string): void {
+            root.saveNow();
+        }
+    }
+
+    // Unlocked: open the note for real.
+    onNoteLockedChanged: {
+        if (!root.noteLocked && root.document && root.noteFullPath.toString().length > 0) {
+            root.document.reloadFiles([Qt.url(root.noteFullPath)]);
+            root.saved = true;
         }
     }
 

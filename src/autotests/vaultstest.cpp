@@ -4,6 +4,7 @@
 #include "../crypto/vaults.h"
 #include "../notemetadata/imagelinks.h"
 #include "../notemetadata/notemetadata.h"
+#include "../notebooksmodel.h"
 #include "../notesmodel.h"
 
 #include <QDir>
@@ -158,6 +159,39 @@ private Q_SLOTS:
         // Plain again: writes are plain.
         QVERIFY(NoteIO::write(nb + u"/Sub/Diary.md"_s, u"# Diary\n"_s));
         QCOMPARE(raw(nb + u"/Sub/Diary.md"_s), u"# Diary\n"_s);
+    }
+
+    void testMovingNotesBetweenNotebooks()
+    {
+        auto *v = Vaults::instance();
+        const QString secret = freshNotebook();
+        QVERIFY(!v->encryptNotebook(secret, u"hunter22"_s).isEmpty());
+        const QString open = m_dir.filePath(u"Notes/Open2"_s);
+        write(open + u"/Shopping.md"_s, "# Shopping\n\nEggs\n");
+
+        NoteBooksModel model;
+        model.setStoragePath(m_dir.filePath(u"Notes"_s));
+
+        // Plain note into the encrypted notebook: encrypted on arrival.
+        model.moveNote(QUrl::fromLocalFile(open + u"/Shopping.md"_s).toString(), secret);
+        QVERIFY(!QFile::exists(open + u"/Shopping.md"_s));
+        QVERIFY(raw(secret + u"/Shopping.md"_s).startsWith(u"---\nmarknote-encrypted: 1\n"_s));
+        QVERIFY(!raw(secret + u"/Shopping.md"_s).contains(u"Eggs"_s));
+
+        // Encrypted note out to a plain notebook: decrypted, readable there.
+        model.moveNote(QUrl::fromLocalFile(secret + u"/Plans.md"_s).toString(), open);
+        QVERIFY(raw(open + u"/Plans.md"_s).contains(u"Secret island"_s));
+
+        // Locked: refused, nothing moves.
+        v->lock(secret);
+        QSignalSpy notice(v, &Vaults::notice);
+        model.moveNote(QUrl::fromLocalFile(secret + u"/Shopping.md"_s).toString(), open);
+        QCOMPARE(notice.count(), 1);
+        QVERIFY(QFile::exists(secret + u"/Shopping.md"_s));
+        QVERIFY(!QFile::exists(open + u"/Shopping.md"_s));
+        model.moveNote(QUrl::fromLocalFile(open + u"/Plans.md"_s).toString(), secret);
+        QCOMPARE(notice.count(), 2);
+        QVERIFY(QFile::exists(open + u"/Plans.md"_s));
     }
 
     void testOtherNotebooksUnaffected()

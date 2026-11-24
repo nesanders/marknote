@@ -48,9 +48,11 @@ void RawDocumentHandler::load(const QUrl &fileUrl)
     m_fileUrl = fileUrl;
     Q_EMIT fileUrlChanged();
 
+    // A note in a locked notebook (or an unreadable one) opens empty, so no
+    // earlier plaintext stays on screen. NoteIO refuses to save it.
     QString content;
     if (NoteIO::read(fileUrl.toLocalFile(), &content) != NoteIO::Status::Ok)
-        return;
+        content.clear();
 
     if (QTextDocument *doc = textDocument()) {
         doc->setUndoRedoEnabled(false);
