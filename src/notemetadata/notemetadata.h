@@ -74,6 +74,18 @@ public:
     /// Files were changed behind our back (e.g. by sync); re-read them.
     Q_INVOKABLE void filesChanged(const QStringList &paths);
 
+    /// Manual order of a folder's notes and subfolders (file names, from
+    /// "X-Marknote-Order" in its .directory). Names not listed come last.
+    QStringList folderOrder(const QString &folderPath) const;
+    /// Sort key for the manual order: listed entries by position, then the
+    /// rest by name.
+    QString manualSortKey(const QString &filePath) const;
+    /// Put @p name before or after @p target in @p folder's manual order (the
+    /// whole current order is written, so what the user sees stays put).
+    Q_INVOKABLE bool placeInOrder(const QString &folder, const QString &name, const QString &target, bool after);
+    /// Keep a renamed entry's place.
+    void renameInOrder(const QString &folder, const QString &oldName, const QString &newName);
+
     /// Link text for an image the user inserts into a note: relative, after
     /// copying the image next to the note if it is outside the notebook.
     Q_INVOKABLE QString imageLink(const QUrl &note, const QUrl &image, const QString &notebookPath);
@@ -92,6 +104,8 @@ Q_SIGNALS:
     void statusMessage(const QString &message);
     void revisionChanged();
     void metadataChanged(const QString &path);
+    /// A folder's manual order changed (also after a sync brought a new one).
+    void orderChanged(const QString &folder);
 
 private:
     explicit NoteMetadata(QObject *parent = nullptr);
@@ -111,5 +125,7 @@ private:
         QString lowerBody;
     };
     mutable QHash<QString, BodyEntry> m_bodyCache;
+    mutable QHash<QString, QStringList> m_orderCache;
+    bool writeOrder(const QString &folder, const QStringList &order);
     int m_revision = 0;
 };

@@ -424,3 +424,7 @@ input.cm-task { width: 1.05em; height: 1.05em; min-height: 0; margin: 0 0.45em 0
 .unlock-form { display: flex; flex-direction: column; gap: 0.5rem; }
 .unlock-actions { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
 input.mono { font-family: ui-monospace, 'Noto Sans Mono', monospace; letter-spacing: 0.03em; }
+
+/* Manual order: insertion line above or below the row under the pointer */
+.row.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+.row.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }

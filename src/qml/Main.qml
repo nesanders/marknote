@@ -542,6 +542,18 @@ StatetfulApp.StatefulWindow {
                                     }
                                     checked: Config.sortBehaviour == "sort-date"
                                 }
+
+                                Controls.MenuItem {
+                                    checkable: true
+                                    text: i18n("Manually (drag to arrange)")
+                                    icon.name: "view-sort"
+                                    autoExclusive: true
+                                    onClicked: {
+                                        Config.sortBehaviour = "sort-manual";
+                                        Config.save();
+                                    }
+                                    checked: Config.sortBehaviour == "sort-manual"
+                                }
                             }
 
                             Kirigami.Action { fromQAction: App.action('open_kcommand_bar') }

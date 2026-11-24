@@ -201,3 +201,41 @@ test('images: index, desktop file:// links, relative links, upload next to the n
     assert.deepEqual(lib.resolveImage(feature.id, link), { path: `Marknote overhaul/${decodeURI(link)}` });
     assert.equal(await (await drive.getBlob(stored.id)).text(), 'png-bytes');
 });
+
+test('manual order: KDE list format, placing, renaming, new notes last', async () => {
+    const { lib, drive } = await setup();
+    const { parseConfigList, formatConfigList, sortManual } = await import('../src/library.js');
+    // Exactly what KConfig writes (see src/autotests/ordertest.cpp).
+    const kconfig = 'a\\\\,b.md,back\\\\\\\\slash.md, lead,trail ,plain.md,ünï.md';
+    const list = parseConfigList(kconfig);
+    assert.deepEqual(list, ['a,b.md', 'back\\slash.md', ' lead', 'trail ', 'plain.md', 'ünï.md']);
+    assert.equal(formatConfigList(list), kconfig);
+
+    const top = () => sortManual(lib.children(null), lib.orderOf(null)).map((i) => i.title);
+    // Nothing arranged yet: by title, folders and notes mixed (as on the desktop).
+    assert.deepEqual(top(), [...top()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())));
+    assert.ok(top().indexOf('Marknote overhaul') > top().indexOf('Long checklist'));
+    const weekly = byTitle(lib, 'Weekly sync');
+    const first = sortManual(lib.children(null), lib.orderOf(null))[0];
+    await lib.placeInOrder(weekly.id, first.id, false);
+    assert.equal(top()[0], 'Weekly sync');
+    // Written to the notebook's .directory on Drive, other keys kept.
+    const dir = (await drive.listChildren(lib.notebook.id)).find((f) => f.name === '.directory');
+    const text = await drive.getText(dir.id);
+    assert.match(text, /X-Marknote-Order=Weekly sync\.md,/);
+    assert.match(text, /X-MarkNote-Color=#2d7fb8/);
+
+    // Into a folder, after a given note.
+    const design = byTitle(lib, 'Design notes');
+    const scratch = byTitle(lib, 'Scratch');
+    await lib.placeInOrder(scratch.id, design.id, true);
+    assert.equal(scratch.parentId, design.parentId);
+    const inFolder = sortManual(lib.children(design.parentId), lib.orderOf(design.parentId)).map((i) => i.title);
+    assert.equal(inFolder[inFolder.indexOf('Design notes') + 1], 'Scratch');
+
+    // Renaming keeps the place; a new note goes last.
+    await lib.rename(weekly.id, 'Monday sync');
+    assert.equal(top()[0], 'Monday sync');
+    await lib.createNote(null, 'AAA new');
+    assert.equal(top().at(-1), 'AAA new');
+});

@@ -40,6 +40,8 @@ nothing is saved).
 - **Drag and drop** in the tree, as on the desktop: onto a folder moves into it, onto
   a note moves next to it, onto empty space moves to the top level. With touch, hold
   a note, then drag (hold and release opens its menu).
+- **Manual order** (Settings › Sort notes › Manual): drag a note above or below another;
+  the order is the same as on the desktop.
 - New note / folder, rename, move, delete (to the Drive trash), set icon, edit tags,
   new notebook.
 - **Never overwrites another device's edit.** A note is only saved over the version

@@ -214,6 +214,8 @@ QVariant NotesModel::data(const QModelIndex &index, int role) const
             return QStringList();
         }
         return NoteMetadata::instance()->metaForFile(m_fsModel->filePath(srcIndex)).tags;
+    case Role::ManualOrder:
+        return NoteMetadata::instance()->manualSortKey(m_fsModel->filePath(srcIndex));
     }
 
     return QIdentityProxyModel::data(index, role);
@@ -235,6 +237,7 @@ QHash<int, QByteArray> NotesModel::roleNames() const
     roles[Role::Icon] = "noteIcon";
     roles[Role::IconIsEmoji] = "noteIconIsEmoji";
     roles[Role::Tags] = "tags";
+    roles[Role::ManualOrder] = "manualOrder";
     return roles;
 }
 
@@ -354,6 +357,7 @@ QUrl NotesModel::renameNote(const QUrl &path, const QString &name)
             Q_EMIT errorOccurred(i18nc("@info:status", "Failed to rename folder."));
             return {};
         }
+        NoteMetadata::instance()->renameInOrder(info.absolutePath(), info.fileName(), cleanName);
         return QUrl::fromLocalFile(newPath);
     }
 
@@ -370,6 +374,7 @@ QUrl NotesModel::renameNote(const QUrl &path, const QString &name)
         Q_EMIT errorOccurred(i18nc("@info:status", "Failed to rename note."));
         return {};
     }
+    NoteMetadata::instance()->renameInOrder(info.absolutePath(), info.fileName(), QFileInfo(newPath).fileName());
     return QUrl::fromLocalFile(newPath);
 }
 

@@ -592,6 +592,35 @@ Kirigami.ScrollablePage {
     }
 
     /// Move a note or folder (by path or file URL) into @p destPath, keeping the editor on it.
+    // View › Sort Notes › Manual: rows can be dragged above or below each other.
+    readonly property bool manualOrder: Config.sortBehaviour === "sort-manual"
+
+    /// Put the note or folder @p source just before or after @p targetPath
+    /// (moving it into the target's folder first if needed).
+    function placeNear(source: string, targetPath: string, after: bool): void {
+        const src = root.cleanPath(source);
+        const target = root.cleanPath(targetPath);
+        if (src.length === 0 || target.length === 0 || src === target || target.startsWith(src + "/")) {
+            return;
+        }
+        const folder = target.substring(0, target.lastIndexOf("/"));
+        const name = src.substring(src.lastIndexOf("/") + 1);
+        if (src.substring(0, src.lastIndexOf("/")) !== folder) {
+            root.moveInto(src, folder);
+        }
+        NoteMetadata.placeInOrder(folder, name, target.substring(target.lastIndexOf("/") + 1), after);
+        filterModel.invalidate();
+    }
+
+    Connections {
+        target: NoteMetadata
+        function onOrderChanged(folder: string): void {
+            if (root.manualOrder) {
+                filterModel.invalidate();
+            }
+        }
+    }
+
     function moveInto(source: string, destPath: string): void {
         const src = root.cleanPath(source);
         const dest = root.cleanPath(destPath);
@@ -715,6 +744,17 @@ Kirigami.ScrollablePage {
                     notesList.section.delegate: nullComponent
                 }
                 StateChangeScript { script: filterModel.sort(0, Qt.DescendingOrder) }
+            },
+            State {
+                name: "sort-manual"
+                PropertyChanges {
+                    filterModel.sortRole: NotesModel.ManualOrder
+                    filterModel.sortOrder: Qt.AscendingOrder
+                }
+                PropertyChanges {
+                    notesList.section.delegate: nullComponent
+                }
+                StateChangeScript { script: filterModel.sort(0, Qt.AscendingOrder) }
             }
         ]
 
@@ -1031,6 +1071,9 @@ Kirigami.ScrollablePage {
                 ? (isFolder ? SyncManager.unseenIn(normPath) : (SyncManager.isUnseen(normPath) ? 1 : 0)) : 0
 
             property bool isDropTarget: false
+            // Where a dragged row would land: "before"/"after" this row (manual
+            // order), or "into" (a folder, or this note's folder).
+            property string dropZone: "into"
 
             visible: isRelevant
             height: isRelevant ? implicitHeight : 0
@@ -1135,12 +1178,26 @@ Kirigami.ScrollablePage {
                     return root.cleanPath(drag.getDataAsString ? drag.getDataAsString("application/x-marknote-note") : "");
                 }
 
+                function zoneAt(y: real): string {
+                    if (!root.manualOrder) {
+                        return "into";
+                    }
+                    const h = delegateItem.height;
+                    const rel = y + dropArea.y; // the area is larger than a folder row
+                    if (delegateItem.isFolder) {
+                        return rel < h * 0.25 ? "before" : (rel > h * 0.75 ? "after" : "into");
+                    }
+                    return rel < h / 2 ? "before" : "after";
+                }
+
                 onEntered: (drag) => {
                     delegateItem.isDropTarget = true;
+                    delegateItem.dropZone = zoneAt(drag.y);
                     drag.accept(Qt.MoveAction);
                 }
 
                 onPositionChanged: (drag) => {
+                    delegateItem.dropZone = zoneAt(drag.y);
                     drag.accept(Qt.MoveAction);
                 }
 
@@ -1156,9 +1213,25 @@ Kirigami.ScrollablePage {
                     } else if (drop.keys.indexOf("text/uri-list") !== -1) {
                         noteUri = drop.getDataAsString("text/uri-list").split("\n")[0].trim();
                     }
-                    root.moveInto(noteUri, dropArea.destination);
+                    if (root.manualOrder && delegateItem.dropZone !== "into") {
+                        root.placeNear(noteUri, delegateItem.normPath, delegateItem.dropZone === "after");
+                    } else {
+                        root.moveInto(noteUri, dropArea.destination);
+                    }
                     drop.acceptProposedAction();
                 }
+            }
+
+            // Insertion line for manual order.
+            Rectangle {
+                z: 100
+                visible: delegateItem.isDropTarget && delegateItem.dropZone !== "into"
+                x: Kirigami.Units.gridUnit * delegateItem.visualLevel
+                width: parent.width - x - Kirigami.Units.smallSpacing
+                height: 2
+                radius: 1
+                y: delegateItem.dropZone === "before" ? 0 : parent.height - height
+                color: Kirigami.Theme.highlightColor
             }
 
             ContextMenu.onRequested: (position) => delegateItem.openContextMenu()
@@ -1481,7 +1554,7 @@ Kirigami.ScrollablePage {
                 }
             }
 
-            highlighted: NavigationController.absoluteNotePath === delegateItem.normPath || delegateItem.isDropTarget
+            highlighted: NavigationController.absoluteNotePath === delegateItem.normPath || (delegateItem.isDropTarget && delegateItem.dropZone === "into")
             readonly property real rowPadding: compact ? 1 : comfortable ? Kirigami.Units.smallSpacing : 1
             topPadding: rowPadding
             bottomPadding: rowPadding
