@@ -105,7 +105,7 @@ Delegates.RoundedItemDelegate {
             id: label
             text: root.name
             width: Config.expandedSidebar
-            ? parent.width - x - (menuButton.width + countLabel.implicitWidth + (lockIcon.visible ? lockIcon.width + Kirigami.Units.smallSpacing : 0) + Kirigami.Units.largeSpacing * 2)
+            ? parent.width - x - (menuButton.width + countLabel.implicitWidth + (lockIcon.visible ? lockIcon.width + Kirigami.Units.smallSpacing : 0) + (unseenBadge.visible ? unseenBadge.width + Kirigami.Units.smallSpacing : 0) + Kirigami.Units.largeSpacing * 2)
             : Math.min(parent.width, implicitWidth)
             elide: Text.ElideRight
             y: Config.expandedSidebar ? parent.implicitHeight / 2 - height / 2 : icon.height + icon. y + Kirigami.Units.smallSpacing
@@ -163,6 +163,32 @@ Delegates.RoundedItemDelegate {
             Controls.ToolTip.visible: lockHover.hovered
             Controls.ToolTip.text: isLocked ? KI18n.i18nc("@info:tooltip", "Encrypted, locked") : KI18n.i18nc("@info:tooltip", "Encrypted, unlocked")
             HoverHandler { id: lockHover }
+        }
+
+        // Notes updated by sync and not opened yet.
+        Rectangle {
+            id: unseenBadge
+            readonly property int count: SyncManager.activityRevision >= 0 ? SyncManager.unseenCount(root.path) : 0
+            visible: count > 0
+            height: Math.round(Kirigami.Units.gridUnit * 0.8)
+            width: Config.expandedSidebar ? Math.max(height, unseenText.implicitWidth + Kirigami.Units.smallSpacing * 2) : height * 0.6
+            radius: height / 2
+            color: Kirigami.Theme.highlightColor
+            x: Config.expandedSidebar
+               ? (lockIcon.visible ? lockIcon.x + lockIcon.width : label.x + Math.min(label.implicitWidth, label.width)) + Kirigami.Units.smallSpacing
+               : icon.x + icon.width - width
+            y: Config.expandedSidebar ? parent.implicitHeight / 2 - height / 2 : icon.y + icon.height - height
+            Controls.Label {
+                id: unseenText
+                anchors.centerIn: parent
+                visible: Config.expandedSidebar
+                text: unseenBadge.count
+                color: Kirigami.Theme.highlightedTextColor
+                font: Kirigami.Theme.smallFont
+            }
+            HoverHandler { id: unseenHover }
+            Controls.ToolTip.visible: unseenHover.hovered
+            Controls.ToolTip.text: KI18n.i18ncp("@info:tooltip", "1 note updated by sync", "%1 notes updated by sync", count)
         }
 
         Controls.Label {

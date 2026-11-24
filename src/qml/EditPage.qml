@@ -713,8 +713,102 @@ Kirigami.Page {
         bottomMargin: parent.height - height - Kirigami.Units.gridUnit * 3
     }
 
+    // ---- Changes that came in by sync -------------------------------------
+    property string syncBannerText: ""
+    property string syncBannerCopy: "" // notebook-relative path of a conflict copy
+    property bool syncBannerWarning: false
+
+    function notebookRelative(file: string): string {
+        const nb = NavigationController.notebookPath.replace(/^file:\/\//, "").replace(/\/+$/, "");
+        const path = file.replace(/^file:\/\//, "");
+        return path.startsWith(nb + "/") ? decodeURIComponent(path.substring(nb.length + 1)) : "";
+    }
+
+    /// Show what sync did to the open note (since @p since, or the newest change if it is unseen).
+    function updateSyncBanner(since: var): void {
+        const rel = root.notebookRelative(root.noteFullPath.toString());
+        if (rel.length === 0) {
+            return;
+        }
+        const nb = NavigationController.notebookPath;
+        const unseen = SyncManager.isUnseen(root.noteFullPath.toString());
+        if (!since && !unseen) {
+            return;
+        }
+        const where = SyncManager.status(nb).destination || KI18n.i18nc("@info sync destination", "the sync folder");
+        for (const e of SyncManager.activity(nb, 200)) {
+            if (e.path !== rel && e.copy !== rel) {
+                continue;
+            }
+            if (since && e.time < since) {
+                break;
+            }
+            const when = e.time.toLocaleString(Qt.locale(), Locale.ShortFormat);
+            if (e.kind === "conflict" && e.path === rel) {
+                root.syncBannerWarning = true;
+                root.syncBannerCopy = e.copyExists ? e.copy : "";
+                root.syncBannerText = KI18n.i18nc("@info %1 destination, %2 date", "This note was also changed on another device. Your version stays here; the version from %1 was saved as a separate note (%2).", where, when);
+                break;
+            }
+            if (e.kind === "conflict" && e.copy === rel) {
+                root.syncBannerWarning = true;
+                root.syncBannerCopy = "";
+                root.syncBannerText = KI18n.i18nc("@info %1 destination, %2 date", "This is the other device's version of “%1”, kept from %2 because both versions changed (%3).", e.path.replace(/\.md$/, ""), where, when);
+                break;
+            }
+            if (e.kind === "received") {
+                root.syncBannerWarning = false;
+                root.syncBannerCopy = "";
+                root.syncBannerText = KI18n.i18nc("@info %1 destination, %2 date", "Updated from %1 (%2).", where, when);
+                break;
+            }
+        }
+        SyncManager.markSeen(root.noteFullPath.toString());
+    }
+
+    property var syncStarted: null
+    Connections {
+        target: SyncManager
+        function onAboutToSync(notebookPath: string): void {
+            root.syncStarted = new Date();
+        }
+        function onSyncFinished(notebookPath: string, ok: bool, summary: string, errors: list<string>, background: bool, received: int): void {
+            if (received > 0 && root.syncStarted) {
+                root.updateSyncBanner(new Date(root.syncStarted.getTime() - 1000));
+            }
+        }
+    }
+
     contentItem: ColumnLayout {
         spacing: 0
+        Kirigami.InlineMessage {
+            id: syncBanner
+            Layout.fillWidth: true
+            Layout.margins: Kirigami.Units.smallSpacing
+            // Leave room for the table-of-contents handle at the top right.
+            Layout.rightMargin: root.supportsToc ? Kirigami.Units.gridUnit * 2.5 : Kirigami.Units.smallSpacing
+            visible: root.syncBannerText.length > 0 && !root.noteLocked
+            type: root.syncBannerWarning ? Kirigami.MessageType.Warning : Kirigami.MessageType.Information
+            icon.name: root.syncBannerWarning ? "data-warning" : "folder-cloud"
+            text: root.syncBannerText
+            actions: [
+                Kirigami.Action {
+                    visible: root.syncBannerCopy.length > 0
+                    text: KI18n.i18nc("@action:button", "Open Other Version")
+                    icon.name: "document-open"
+                    onTriggered: {
+                        const copy = root.syncBannerCopy;
+                        root.syncBannerText = "";
+                        NavigationController.notePath = copy;
+                    }
+                },
+                Kirigami.Action {
+                    text: KI18n.i18nc("@action:button", "Dismiss")
+                    icon.name: "dialog-close"
+                    onTriggered: root.syncBannerText = ""
+                }
+            ]
+        }
         Kirigami.PlaceholderMessage {
             id: lockedMessage
             visible: root.noteLocked
@@ -809,6 +903,7 @@ Kirigami.Page {
     Component.onCompleted: {
         loadNote();
         init = true;
+        root.updateSyncBanner(null);
 
         if (NavigationController.openReplaceOnSourceMode && NavigationController.sourceMode) {
             NavigationController.openReplaceOnSourceMode = false;
@@ -921,9 +1016,11 @@ Kirigami.Page {
     }
 
     onNoteFullPathChanged: () => {
+        root.syncBannerText = "";
         if (!init) {
             return;
         }
         loadNote();
+        root.updateSyncBanner(null);
     }
 }

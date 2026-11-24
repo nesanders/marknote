@@ -19,6 +19,7 @@
 #include <QPointer>
 #include <QSaveFile>
 #include <QThread>
+#include <QTimer>
 
 #include <memory>
 
@@ -82,6 +83,62 @@ SyncManager::SyncManager(QObject *parent)
     // Only touch the wallet if this device signed in before: no prompt otherwise.
     if (!config->googleAccount().isEmpty()) {
         m_google->restore();
+    }
+
+    // Background sync: shortly after start, then every few minutes.
+    m_timer = new QTimer(this);
+    m_timer->setSingleShot(true);
+    connect(m_timer, &QTimer::timeout, this, [this]() {
+        syncAllInBackground();
+        scheduleBackground();
+    });
+    m_timer->start(8 * 1000);
+}
+
+void SyncManager::scheduleBackground()
+{
+    auto *config = Config::self();
+    if (!config->autoSync()) {
+        m_timer->stop();
+        return;
+    }
+    m_timer->start(std::max(1, config->autoSyncMinutes()) * 60 * 1000);
+}
+
+void SyncManager::backgroundSettingsChanged()
+{
+    scheduleBackground();
+}
+
+void SyncManager::syncAllInBackground(int minSeconds)
+{
+    auto *config = Config::self();
+    if (!config->autoSync()) {
+        return;
+    }
+    const QDateTime now = QDateTime::currentDateTime();
+    if (minSeconds > 0 && m_lastBackground.isValid() && m_lastBackground.secsTo(now) < minSeconds) {
+        return;
+    }
+    m_lastBackground = now;
+    const QDir root(cleanNotebookPath(config->storage()));
+    const auto notebooks = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo &info : notebooks) {
+        const QString path = cleanNotebookPath(info.filePath());
+        if (!QFile::exists(configPath(path)) || m_running == path || m_queue.contains(path)) {
+            continue;
+        }
+        const QString destination = settings(path).value(u"destination"_s).toString();
+        // Quietly skip what cannot work without the user (no sign-in yet).
+        if (destination == u"none"_s || (destination == u"google"_s && !m_google->signedIn())) {
+            continue;
+        }
+        m_background.insert(path);
+        m_queue.append(path);
+    }
+    Q_EMIT runningChanged();
+    if (m_running.isEmpty()) {
+        startNext();
     }
 }
 
@@ -207,6 +264,7 @@ bool SyncManager::syncNow(const QString &notebookPath)
     if (settings(path).value(u"destination"_s).toString() == u"none"_s) {
         return false;
     }
+    m_background.remove(path); // asked for by the user: report the outcome
     if (m_running == path || m_queue.contains(path)) {
         return true;
     }
@@ -332,6 +390,14 @@ void SyncManager::finished(const QString &notebookPath, const SyncResult &result
     json[u"lastSummary"_s] = summary;
     json[u"lastErrors"_s] = QJsonArray::fromStringList(result.errors.mid(0, 20));
     writeConfig(notebookPath, json);
+    record(notebookPath, result);
+    const bool background = m_background.remove(notebookPath);
+    int received = 0;
+    for (const SyncChange &c : result.log) {
+        if ((c.kind == SyncChange::Received || c.kind == SyncChange::Conflict) && c.path.endsWith(u".md"_s)) {
+            ++received;
+        }
+    }
 
     if (!result.changedLocalPaths.isEmpty()) {
         QList<QUrl> urls;
@@ -348,8 +414,259 @@ void SyncManager::finished(const QString &notebookPath, const SyncResult &result
     m_progress.clear();
     Q_EMIT runningChanged();
     Q_EMIT progressChanged();
-    Q_EMIT syncFinished(notebookPath, result.ok(), summary, result.errors);
+    Q_EMIT syncFinished(notebookPath, result.ok(), summary, result.errors, background, received);
     startNext();
+}
+
+// ---- Activity -------------------------------------------------------------
+
+namespace
+{
+constexpr int MaxEntries = 300;
+
+QString kindName(SyncChange::Kind kind)
+{
+    switch (kind) {
+    case SyncChange::Received:
+        return u"received"_s;
+    case SyncChange::Sent:
+        return u"sent"_s;
+    case SyncChange::DeletedHere:
+        return u"deletedHere"_s;
+    case SyncChange::DeletedThere:
+        return u"deletedThere"_s;
+    case SyncChange::Conflict:
+        return u"conflict"_s;
+    }
+    return {};
+}
+
+QJsonObject readActivity(const QString &notebookPath)
+{
+    QFile f(SyncManager::activityPath(notebookPath));
+    if (!f.open(QFile::ReadOnly)) {
+        return {};
+    }
+    return QJsonDocument::fromJson(f.readAll()).object();
+}
+
+void writeActivity(const QString &notebookPath, const QJsonObject &json)
+{
+    const QString path = SyncManager::activityPath(notebookPath);
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile f(path);
+    if (f.open(QFile::WriteOnly)) {
+        f.write(QJsonDocument(json).toJson(QJsonDocument::Compact));
+        f.commit();
+    }
+}
+
+bool isNote(const QString &path)
+{
+    return path.endsWith(u".md"_s);
+}
+} // namespace
+
+QString SyncManager::activityPath(const QString &notebookPath)
+{
+    // Next to the sync state: device-local, never synced.
+    return cleanNotebookPath(notebookPath) + u"/.marknote/sync/activity.json"_s;
+}
+
+int SyncManager::activityRevision() const
+{
+    return m_activityRevision;
+}
+
+QSet<QString> &SyncManager::unseenOf(const QString &notebookPath)
+{
+    auto it = m_unseen.find(notebookPath);
+    if (it == m_unseen.end()) {
+        QSet<QString> set;
+        for (const QJsonValue &v : readActivity(notebookPath).value(u"unseen"_s).toArray()) {
+            if (QFile::exists(notebookPath + u'/' + v.toString())) { // not deleted or moved since
+                set.insert(v.toString());
+            }
+        }
+        it = m_unseen.insert(notebookPath, set);
+    }
+    return it.value();
+}
+
+void SyncManager::saveUnseen(const QString &notebookPath)
+{
+    QJsonObject json = readActivity(notebookPath);
+    const QSet<QString> &set = unseenOf(notebookPath);
+    QStringList list(set.cbegin(), set.cend());
+    list.sort();
+    json[u"unseen"_s] = QJsonArray::fromStringList(list);
+    writeActivity(notebookPath, json);
+}
+
+void SyncManager::record(const QString &notebookPath, const SyncResult &result)
+{
+    if (result.log.isEmpty()) {
+        return;
+    }
+    QJsonObject json = readActivity(notebookPath);
+    QJsonArray entries = json.value(u"entries"_s).toArray();
+    QSet<QString> &unseen = unseenOf(notebookPath);
+    const QString now = QDateTime::currentDateTime().toString(Qt::ISODate);
+    for (const SyncChange &c : result.log) {
+        QJsonObject e{{u"time"_s, now}, {u"kind"_s, kindName(c.kind)}, {u"path"_s, c.path}};
+        if (!c.copy.isEmpty()) {
+            e[u"copy"_s] = c.copy;
+        }
+        entries.append(e);
+        if (c.kind == SyncChange::Received && isNote(c.path)) {
+            unseen.insert(c.path);
+        } else if (c.kind == SyncChange::Conflict && isNote(c.copy)) {
+            unseen.insert(c.copy);
+        } else if (c.kind == SyncChange::DeletedHere) {
+            unseen.remove(c.path);
+        }
+    }
+    while (entries.size() > MaxEntries) {
+        entries.removeFirst();
+    }
+    json[u"entries"_s] = entries;
+    QStringList list(unseen.cbegin(), unseen.cend());
+    list.sort();
+    json[u"unseen"_s] = QJsonArray::fromStringList(list);
+    writeActivity(notebookPath, json);
+    ++m_activityRevision;
+    Q_EMIT activityChanged();
+}
+
+QString SyncManager::notebookOf(const QString &file) const
+{
+    const QString path = cleanNotebookPath(file);
+    const QString storage = cleanNotebookPath(Config::self()->storage());
+    if (!path.startsWith(storage + u'/')) {
+        return {};
+    }
+    const QString first = path.mid(storage.size() + 1).section(u'/', 0, 0);
+    return first.isEmpty() ? QString() : storage + u'/' + first;
+}
+
+QVariantMap SyncManager::status(const QString &notebookPath) const
+{
+    const QString path = cleanNotebookPath(notebookPath);
+    const QVariantMap config = settings(path);
+    const QString destination = config.value(u"destination"_s).toString();
+    QVariantMap out;
+    out[u"lastSync"_s] = config.value(u"lastSync"_s);
+    out[u"summary"_s] = config.value(u"lastSummary"_s);
+    out[u"errors"_s] = config.value(u"lastErrors"_s);
+    if (destination == u"google"_s) {
+        out[u"destination"_s] = i18n("Google Drive");
+    } else if (destination == u"folder"_s) {
+        out[u"destination"_s] = i18nc("@info sync destination", "folder “%1”", QFileInfo(config.value(u"localFolder"_s).toString()).fileName());
+    }
+    if (destination == u"none"_s) {
+        out[u"state"_s] = u"none"_s;
+    } else if (m_running == path) {
+        out[u"state"_s] = u"syncing"_s;
+    } else if (m_queue.contains(path)) {
+        out[u"state"_s] = u"queued"_s;
+    } else if (!config.value(u"lastSync"_s).toDateTime().isValid()) {
+        out[u"state"_s] = u"never"_s;
+    } else {
+        out[u"state"_s] = config.value(u"lastOk"_s).toBool() ? u"ok"_s : u"error"_s;
+    }
+    return out;
+}
+
+QVariantList SyncManager::activity(const QString &notebookPath, int limit)
+{
+    const QString nb = cleanNotebookPath(notebookPath);
+    const QJsonArray entries = readActivity(nb).value(u"entries"_s).toArray();
+    const QSet<QString> &unseen = unseenOf(nb);
+    QVariantList out;
+    for (qsizetype i = entries.size() - 1; i >= 0 && out.size() < limit; --i) {
+        const QJsonObject e = entries.at(i).toObject();
+        const QString path = e.value(u"path"_s).toString();
+        // Folder settings (.directory) and other hidden files are not shown.
+        if (path.section(u'/', -1).startsWith(u'.')) {
+            continue;
+        }
+        const QString copy = e.value(u"copy"_s).toString();
+        QVariantMap m;
+        m[u"time"_s] = QDateTime::fromString(e.value(u"time"_s).toString(), Qt::ISODate);
+        m[u"kind"_s] = e.value(u"kind"_s).toString();
+        m[u"path"_s] = path;
+        m[u"file"_s] = QString(nb + u'/' + path);
+        m[u"exists"_s] = QFile::exists(nb + u'/' + path);
+        m[u"copy"_s] = copy;
+        m[u"copyFile"_s] = copy.isEmpty() ? QString() : nb + u'/' + copy;
+        m[u"copyExists"_s] = !copy.isEmpty() && QFile::exists(nb + u'/' + copy);
+        const QString kind = e.value(u"kind"_s).toString();
+        m[u"unseen"_s] = (kind == u"received"_s || kind == u"conflict"_s) && unseen.contains(copy.isEmpty() ? path : copy);
+        out << m;
+    }
+    return out;
+}
+
+bool SyncManager::isUnseen(const QString &file)
+{
+    const QString nb = notebookOf(file);
+    if (nb.isEmpty() || !QFile::exists(configPath(nb))) {
+        return false;
+    }
+    return unseenOf(nb).contains(cleanNotebookPath(file).mid(nb.size() + 1));
+}
+
+int SyncManager::unseenCount(const QString &notebookPath)
+{
+    const QString nb = cleanNotebookPath(notebookPath);
+    if (!QFile::exists(configPath(nb))) {
+        return 0;
+    }
+    int n = 0;
+    for (const QString &rel : unseenOf(nb)) {
+        n += QFile::exists(nb + u'/' + rel) ? 1 : 0;
+    }
+    return n;
+}
+
+int SyncManager::unseenIn(const QString &folder)
+{
+    const QString path = cleanNotebookPath(folder);
+    const QString nb = notebookOf(path + u"/x");
+    if (nb.isEmpty() || !QFile::exists(configPath(nb))) {
+        return 0;
+    }
+    const QString prefix = path == nb ? QString() : path.mid(nb.size() + 1) + u'/';
+    int n = 0;
+    for (const QString &rel : unseenOf(nb)) {
+        n += rel.startsWith(prefix) && QFile::exists(nb + u'/' + rel) ? 1 : 0;
+    }
+    return n;
+}
+
+void SyncManager::markSeen(const QString &file)
+{
+    const QString nb = notebookOf(file);
+    if (nb.isEmpty() || !QFile::exists(configPath(nb))) {
+        return;
+    }
+    if (unseenOf(nb).remove(cleanNotebookPath(file).mid(nb.size() + 1))) {
+        saveUnseen(nb);
+        ++m_activityRevision;
+        Q_EMIT activityChanged();
+    }
+}
+
+void SyncManager::markAllSeen(const QString &notebookPath)
+{
+    const QString nb = cleanNotebookPath(notebookPath);
+    QSet<QString> &set = unseenOf(nb);
+    if (!set.isEmpty()) {
+        set.clear();
+        saveUnseen(nb);
+        ++m_activityRevision;
+        Q_EMIT activityChanged();
+    }
 }
 
 } // namespace Sync

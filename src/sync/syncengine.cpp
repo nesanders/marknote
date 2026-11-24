@@ -269,6 +269,7 @@ SyncResult SyncEngine::run(const Progress &progress)
         }
         next.files.insert(path, md5Hex(data));
         ++result.uploaded;
+        result.log.append({SyncChange::Sent, path, {}});
         return true;
     };
     auto download = [&](const RemoteFile &rf, const QString &targetPath) -> bool {
@@ -308,6 +309,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                 if (download(rf, path)) { // only the remote changed
                     next.files.insert(path, r);
                     ++result.downloaded;
+                    result.log.append({SyncChange::Received, path, {}});
                 }
             } else if (hasBase && r == b) {
                 upload(path, &rf); // only the local copy changed
@@ -317,6 +319,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                 if (download(rf, copy)) {
                     result.conflictCopies << copy;
                     ++result.conflicts;
+                    result.log.append({SyncChange::Conflict, path, copy});
                     // The copy is uploaded on the next sync like any new file.
                     upload(path, &rf);
                 }
@@ -329,6 +332,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                     next.files.remove(path);
                     result.changedLocalPaths << path;
                     ++result.deletedLocal;
+                    result.log.append({SyncChange::DeletedHere, path, {}});
                 } else {
                     result.errors << err;
                 }
@@ -343,6 +347,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                 if (m_backend->remove(rf, &err)) {
                     next.files.remove(path);
                     ++result.deletedRemote;
+                    result.log.append({SyncChange::DeletedThere, path, {}});
                 } else {
                     result.errors << err;
                 }
@@ -350,6 +355,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                 // New there, or edited there after being deleted here.
                 next.files.insert(path, r);
                 ++result.downloaded;
+                result.log.append({SyncChange::Received, path, {}});
             }
         } else {
             next.files.remove(path); // gone on both sides

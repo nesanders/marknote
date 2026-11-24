@@ -327,6 +327,10 @@ Kirigami.ScrollablePage {
             ToolTip.text: text
         }
 
+        SyncStatusButton {
+            notebookPath: NavigationController.notebookPath
+        }
+
         Kirigami.Heading {
             id: heading
             visible: root.isWideScreen
@@ -1022,6 +1026,9 @@ Kirigami.ScrollablePage {
             readonly property var tagList: tags ? Array.from(tags) : []
             readonly property bool showTags: Config.showTagsColumn && !isFolder && tagList.length > 0
             readonly property bool showCreated: Config.showCreatedColumn && createdText.length > 0
+            // Arrived from the sync destination and not opened since (folders: how many inside).
+            readonly property int syncUnseen: SyncManager.activityRevision >= 0 && isRelevant
+                ? (isFolder ? SyncManager.unseenIn(normPath) : (SyncManager.isUnseen(normPath) ? 1 : 0)) : 0
 
             property bool isDropTarget: false
 
@@ -1224,7 +1231,32 @@ Kirigami.ScrollablePage {
                             elide: Qt.ElideRight
                             visible: !renameField.enabled
                             color: textcolorItem.textcolor
-                            font.weight: delegateItem.isFolder ? Font.DemiBold : Font.Normal
+                            font.weight: delegateItem.isFolder || delegateItem.syncUnseen > 0 ? Font.DemiBold : Font.Normal
+                        }
+
+                        // "Updated" marker, like unread mail.
+                        Rectangle {
+                            id: unseenDot
+                            visible: delegateItem.syncUnseen > 0 && !renameField.enabled
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.rightMargin: delegateItem.isFolder ? 0 : Kirigami.Units.smallSpacing
+                            implicitWidth: delegateItem.isFolder ? Math.max(height, folderCount.implicitWidth + Kirigami.Units.smallSpacing * 2) : Math.round(Kirigami.Units.gridUnit * 0.45)
+                            implicitHeight: delegateItem.isFolder ? Math.round(Kirigami.Units.gridUnit * 0.9) : Math.round(Kirigami.Units.gridUnit * 0.45)
+                            radius: height / 2
+                            color: Kirigami.Theme.highlightColor
+                            Label {
+                                id: folderCount
+                                visible: delegateItem.isFolder
+                                anchors.centerIn: parent
+                                text: delegateItem.syncUnseen
+                                color: Kirigami.Theme.highlightedTextColor
+                                font: Kirigami.Theme.smallFont
+                            }
+                            HoverHandler { id: unseenHover }
+                            ToolTip.visible: unseenHover.hovered
+                            ToolTip.text: delegateItem.isFolder
+                                ? KI18n.i18ncp("@info:tooltip", "1 note updated by sync", "%1 notes updated by sync", delegateItem.syncUnseen)
+                                : KI18n.i18nc("@info:tooltip", "Updated by sync since you last opened it")
                         }
 
                         Kirigami.ActionTextField {

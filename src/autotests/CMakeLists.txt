@@ -46,6 +46,12 @@ ecm_add_test(syncenginetest.cpp
     NAME_PREFIX "marknote-"
 )
 
+ecm_add_test(syncactivitytest.cpp
+    TEST_NAME syncactivitytest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)
+
 # The Drive backend is tested against a local fake of the Drive API.
 find_package(Qt6 ${QT_MIN_VERSION} QUIET COMPONENTS HttpServer)
 if(TARGET Qt6::HttpServer)

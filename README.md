@@ -111,6 +111,16 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 - Synced notebooks stay encrypted on Google Drive; the web app unlocks and edits them
   too (encrypting a notebook or changing its password is desktop-only for now).
 
+**Seeing what sync changed**
+- Synced notebooks check for changes in the background (at start, every 5 minutes, and
+  when you come back to the window; *Settings › Sync in the Background*).
+- Notes that arrived from another device are marked with a dot (folders and notebooks
+  show how many) until you open them, like unread mail.
+- Opening such a note says where and when it changed. If both sides changed it, the
+  banner explains that both versions were kept and opens the other one.
+- The cloud button next to *New Folder* shows the sync state ("Synced with Google Drive
+  3 min ago", or the error) and the recent changes, each one clickable.
+
 ### Setting up Google Drive sync
 
 Google requires every app that signs in to have an OAuth client. This repository and
