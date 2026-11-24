@@ -30,7 +30,8 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   onto empty space to move it to the top of the notebook.
 - Each row shows the note's **icon or emoji**, its **tags** and its **created date**
   (visible by default; *View › Show Tags / Show Created Date*).
-- *View › Density*: **Compact**, **Normal** or **Comfortable** rows.
+- *View › Density*: **Compact** (one line, tag dots and a short date), **Normal** (title, then
+  date and tags on a tight second line) or **Comfortable** rows. Dates and tags show in all three.
 - *View › Sort Notes › By Created Date*.
 
 **Filter bar**

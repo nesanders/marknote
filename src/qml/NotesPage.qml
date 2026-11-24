@@ -985,6 +985,7 @@ Kirigami.ScrollablePage {
             required property bool isFolder
             required property var tags
             required property string createdText
+            required property string createdShort
             required property string noteIcon
             required property bool noteIconIsEmoji
             property alias renameField: renameField
@@ -1004,6 +1005,20 @@ Kirigami.ScrollablePage {
             // View › Density: 0 compact (single line, tight), 1 normal, 2 comfortable.
             readonly property int density: Config.treeDensity
             readonly property bool compact: density === 0
+            readonly property bool comfortable: density === 2
+            // Narrow list, Normal/Comfortable: date and tags on a short second line (notes only).
+            readonly property bool narrowMeta: !wide && !compact && !isFolder && (showCreated || showTags)
+            // Row heights per density (Compact keeps its natural height).
+            readonly property real targetHeight: {
+                const g = Kirigami.Units.gridUnit;
+                if (wide) {
+                    return comfortable ? g * 2.2 : g * 1.65;
+                }
+                if (isFolder || !narrowMeta) {
+                    return comfortable ? g * 2.0 : g * 1.45;
+                }
+                return comfortable ? g * 2.9 : g * 2.1;
+            }
             readonly property var tagList: tags ? Array.from(tags) : []
             readonly property bool showTags: Config.showTagsColumn && !isFolder && tagList.length > 0
             readonly property bool showCreated: Config.showCreatedColumn && createdText.length > 0
@@ -1163,8 +1178,10 @@ Kirigami.ScrollablePage {
                 Item {
                     Layout.preferredWidth: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
                     Layout.preferredHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
-                    Layout.alignment: delegateItem.compact ? Qt.AlignVCenter : Qt.AlignTop
-                    Layout.topMargin: delegateItem.compact ? 0 : Math.max(0, (renameField.implicitHeight - height) / 2)
+                    // Two-line rows: level with the title (the text block is centred,
+                    // so lift the icon by the height of the second line).
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.bottomMargin: delegateItem.narrowMeta ? metaRow.Layout.preferredHeight + textColumn.spacing : 0
 
                     Label {
                         anchors.centerIn: parent
@@ -1182,9 +1199,10 @@ Kirigami.ScrollablePage {
                 }
 
                 ColumnLayout {
+                    id: textColumn
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    spacing: 0
+                    Layout.alignment: Qt.AlignVCenter
+                    spacing: delegateItem.comfortable ? Math.round(Kirigami.Units.smallSpacing / 2) : 0
 
                     Item{
                         id: textcolorItem
@@ -1197,9 +1215,9 @@ Kirigami.ScrollablePage {
                         spacing: Kirigami.Units.smallSpacing
 
                         Label {
+                            id: titleLabel
                             Layout.fillWidth: true
                             Layout.leftMargin: Kirigami.Units.smallSpacing
-                            Layout.preferredHeight: delegateItem.compact ? -1 : renameField.implicitHeight
                             verticalAlignment: Text.AlignVCenter
 
                             text: delegateItem.name
@@ -1265,6 +1283,33 @@ Kirigami.ScrollablePage {
                         }
 
 
+                        // Compact, narrow: tag dots and a short date at the end of the line.
+                        Row {
+                            visible: !delegateItem.wide && delegateItem.compact && !delegateItem.isFolder && !renameField.enabled
+                                     && (delegateItem.showTags || delegateItem.showCreated)
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+                            Repeater {
+                                model: !delegateItem.wide && delegateItem.compact && delegateItem.showTags ? delegateItem.tagList.slice(0, 3) : []
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Math.round(Kirigami.Units.gridUnit * 0.4)
+                                    height: width
+                                    radius: width / 2
+                                    color: FilterState.tagHue(modelData)
+                                }
+                            }
+                            Label {
+                                visible: delegateItem.showCreated
+                                anchors.verticalCenter: parent.verticalCenter
+                                leftPadding: Kirigami.Units.smallSpacing / 2
+                                text: delegateItem.createdShort
+                                color: Kirigami.Theme.disabledTextColor
+                                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            }
+                        }
+
                         // Wide layout: tags and created date as columns on the same line.
                         Row {
                             visible: delegateItem.wide && delegateItem.showTags && !renameField.enabled
@@ -1302,17 +1347,17 @@ Kirigami.ScrollablePage {
                     // Narrow layout: created date and tags on a fixed-height second line
                     // (never wraps, so row heights stay stable while filtering).
                     Row {
-                        visible: !delegateItem.wide && !delegateItem.compact && (delegateItem.showCreated || delegateItem.showTags)
+                        id: metaRow
+                        visible: delegateItem.narrowMeta && !renameField.enabled
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.round(Kirigami.Units.gridUnit * 1.1)
+                        Layout.preferredHeight: Math.round(Kirigami.Units.gridUnit * (delegateItem.comfortable ? 1.1 : 0.85))
                         Layout.leftMargin: Kirigami.Units.smallSpacing
-                        Layout.bottomMargin: Kirigami.Units.smallSpacing
                         spacing: Kirigami.Units.smallSpacing
                         clip: true
 
                         Label {
                             visible: delegateItem.showCreated
-                            text: delegateItem.createdText
+                            text: delegateItem.createdShort
                             color: Kirigami.Theme.disabledTextColor
                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                             height: parent.height
@@ -1323,6 +1368,8 @@ Kirigami.ScrollablePage {
                             delegate: TagChip {
                                 required property string modelData
                                 tag: modelData
+                                small: !delegateItem.comfortable
+                                anchors.verticalCenter: parent.verticalCenter
                                 selected: FilterState.tags.indexOf(modelData) !== -1
                                 onClicked: FilterState.toggleTag(modelData)
                             }
@@ -1361,9 +1408,10 @@ Kirigami.ScrollablePage {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.margins: 0
                     // Keep compact rows tight: the hidden menu button must not set the row height.
-                    Layout.maximumHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing : -1
-                    icon.width: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
-                    icon.height: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    Layout.maximumHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing
+                        : delegateItem.comfortable ? -1 : Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing * 2
+                    icon.width: delegateItem.comfortable ? Kirigami.Units.iconSizes.smallMedium : Kirigami.Units.iconSizes.small
+                    icon.height: delegateItem.comfortable ? Kirigami.Units.iconSizes.smallMedium : Kirigami.Units.iconSizes.small
 
                     Accessible.role: Accessible.ButtonMenu
                     Accessible.onPressAction: openMenu()
@@ -1402,19 +1450,15 @@ Kirigami.ScrollablePage {
             }
 
             highlighted: NavigationController.absoluteNotePath === delegateItem.normPath || delegateItem.isDropTarget
-            readonly property real rowPadding: compact ? 1
-                : density === 2 ? Kirigami.Units.largeSpacing
-                : (wide ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing)
+            readonly property real rowPadding: compact ? 1 : comfortable ? Kirigami.Units.smallSpacing : 1
             topPadding: rowPadding
             bottomPadding: rowPadding
-            // RoundedItemDelegate enforces a 2-gridUnit minimum height; compact rows drop it.
+            // RoundedItemDelegate enforces a 2-gridUnit minimum height; each density sets its own.
             implicitHeight: compact
                 ? implicitContentHeight + topPadding + bottomPadding + 2
-                : Math.max(implicitBackgroundHeight + topInset + bottomInset,
-                           implicitContentHeight + topPadding + bottomPadding,
-                           Kirigami.Units.gridUnit * 2)
-            topInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
-            bottomInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
+                : Math.max(implicitContentHeight + topPadding + bottomPadding, Math.round(targetHeight))
+            topInset: compact ? 0 : 1
+            bottomInset: compact ? 0 : 1
         }
 
         // Dropping on empty space moves the note to the top level of the notebook.

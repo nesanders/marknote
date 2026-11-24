@@ -65,6 +65,8 @@ public:
 
     /// "Today at 09:12", "Yesterday at …", or a short date.
     Q_INVOKABLE QString formatCreated(const QDateTime &created) const;
+    /// Shorter form for narrow lists: the time today, "Nov 20" this year, else the short date.
+    Q_INVOKABLE QString formatCreatedShort(const QDateTime &created) const;
 
     /// Normalise a user-entered tag: trimmed, no leading '#', spaces → '-'.
     Q_INVOKABLE static QString normalizeTag(const QString &tag);
