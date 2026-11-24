@@ -17,7 +17,6 @@ Kirigami.Dialog {
 
     required property string notebookPath
     property string notebookName: ""
-    property string recoveryKey: ""
     property bool busy: false
     property string error: ""
 
@@ -41,19 +40,19 @@ Kirigami.Dialog {
         return p.length >= 10 && kinds >= 2 ? KI18n.i18nc("@info password strength", "Fair: longer is better") : KI18n.i18nc("@info password strength", "Weak: use a longer passphrase");
     }
 
-    title: recoveryKey.length > 0 ? KI18n.i18nc("@title:window", "Save Your Recovery Key")
-                                  : KI18n.i18nc("@title:window %1 is a notebook name", "Encrypt “%1”", notebookName)
+    title: KI18n.i18nc("@title:window %1 is a notebook name", "Encrypt “%1”", notebookName)
     preferredWidth: Kirigami.Units.gridUnit * 30
     padding: Kirigami.Units.largeSpacing
     standardButtons: Kirigami.Dialog.NoButton
-    showCloseButton: recoveryKey.length === 0
-    closePolicy: recoveryKey.length > 0 ? Controls.Popup.NoAutoClose : Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
+    closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutside
 
     onOpened: password.forceActiveFocus()
-    onClosed: destroy()
+    // Kept alive while the recovery key dialog it opened is shown (that
+    // dialog lives in this one's QML context).
+    property bool keepAlive: false
+    onClosed: if (!keepAlive) destroy()
 
-    // One set of buttons per step (hidden actions upset the footer layout).
-    customFooterActions: recoveryKey.length > 0 ? [doneAction] : [cancelAction, encryptAction]
+    customFooterActions: [cancelAction, encryptAction]
 
     readonly property Kirigami.Action cancelAction: Kirigami.Action {
         text: KI18n.i18nc("@action:button", "Cancel")
@@ -76,7 +75,14 @@ Kirigami.Dialog {
                 if (key.length > 0) {
                     password.text = "";
                     confirm.text = "";
-                    root.recoveryKey = key;
+                    // The key gets its own dialog (Kirigami does not rebuild a
+                    // dialog's footer when its buttons change).
+                    const component = Qt.createComponent("org.kde.marknote", "RecoveryKeyDialog");
+                    const keyDialog = component.createObject(root.parent, { recoveryKey: key });
+                    root.keepAlive = true;
+                    keyDialog.closed.connect(() => root.destroy());
+                    root.close();
+                    keyDialog.open();
                 } else {
                     root.error = Vaults.lastError;
                 }
@@ -84,19 +90,11 @@ Kirigami.Dialog {
         }
     }
 
-    readonly property Kirigami.Action doneAction: Kirigami.Action {
-        text: KI18n.i18nc("@action:button", "Done")
-        icon.name: "dialog-ok"
-        enabled: storedCheck.checked
-        onTriggered: root.close()
-    }
 
     ColumnLayout {
         spacing: Kirigami.Units.largeSpacing
 
-        // Step 1: what it means, and the password.
         ColumnLayout {
-            visible: root.recoveryKey.length === 0
             Layout.fillWidth: true
             spacing: Kirigami.Units.largeSpacing
 
@@ -152,56 +150,6 @@ Kirigami.Dialog {
                 visible: root.error.length > 0
                 type: Kirigami.MessageType.Error
                 text: root.error
-            }
-        }
-
-        // Step 2: the recovery key, shown once.
-        ColumnLayout {
-            visible: root.recoveryKey.length > 0
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.largeSpacing
-
-            Controls.Label {
-                Layout.fillWidth: true
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 27
-                wrapMode: Text.Wrap
-                text: KI18n.i18nc("@info", "The notebook is encrypted. If you forget the password, this recovery key is the only way back into it. <b>Store it in your password manager now.</b> Marknote will not show it again.")
-            }
-
-            Controls.TextArea {
-                id: keyText
-                Layout.fillWidth: true
-                readOnly: true
-                wrapMode: TextEdit.Wrap
-                text: root.recoveryKey
-                font.family: "monospace"
-                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.1
-                horizontalAlignment: TextEdit.AlignHCenter
-                Accessible.name: KI18n.i18nc("@info", "Recovery key")
-            }
-
-            RowLayout {
-                Controls.Button {
-                    text: KI18n.i18nc("@action:button", "Copy Recovery Key")
-                    icon.name: "edit-copy"
-                    onClicked: {
-                        keyText.selectAll();
-                        keyText.copy();
-                        keyText.deselect();
-                        copiedLabel.visible = true;
-                    }
-                }
-                Controls.Label {
-                    id: copiedLabel
-                    visible: false
-                    text: KI18n.i18nc("@info", "Copied. Paste it into your password manager.")
-                    color: Kirigami.Theme.disabledTextColor
-                }
-            }
-
-            Controls.CheckBox {
-                id: storedCheck
-                text: KI18n.i18nc("@option:check", "I have stored the recovery key in my password manager")
             }
         }
     }

@@ -62,6 +62,7 @@ ecm_add_qml_module(marknote_static
         qml/UnlockNotebookDialog.qml
         qml/EncryptNotebookDialog.qml
         qml/VaultPasswordDialog.qml
+        qml/RecoveryKeyDialog.qml
         qml/ImportMaildirDialog.qml
         # Editor
         qml/EditPage.qml
