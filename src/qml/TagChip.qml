@@ -6,6 +6,7 @@ import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.ki18n
+import org.kde.marknote
 
 /**
  * A small coloured tag pill. The hue is derived from the tag name so a tag
@@ -21,19 +22,15 @@ Controls.AbstractButton {
 
     signal removeRequested()
 
-    readonly property color hue: {
-        const palette = ["#2d7fb8", "#c2622a", "#3a8a55", "#7b57b0", "#2f8a83", "#b5456a", "#8a7a2a", "#5a6e8a"];
-        let h = 0;
-        for (let i = 0; i < tag.length; i++) {
-            h = (h * 31 + tag.charCodeAt(i)) >>> 0;
-        }
-        return palette[h % palette.length];
-    }
+    /// Smaller pill for dense list rows.
+    property bool small: false
+
+    readonly property color hue: FilterState.tagHue(tag)
 
     hoverEnabled: true
     focusPolicy: Qt.NoFocus
-    implicitHeight: Math.round(Kirigami.Units.gridUnit * 1.1)
-    implicitWidth: row.implicitWidth + Kirigami.Units.smallSpacing * 3
+    implicitHeight: Math.round(Kirigami.Units.gridUnit * (small ? 0.85 : 1.1))
+    implicitWidth: row.implicitWidth + Kirigami.Units.smallSpacing * (small ? 2 : 3)
     text: tag
 
     Accessible.name: removable ? KI18n.i18nc("@action:button", "Remove tag %1", tag) : tag
@@ -53,7 +50,7 @@ Controls.AbstractButton {
 
             Controls.Label {
                 text: root.tag
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                font.pointSize: Kirigami.Theme.smallFont.pointSize * (root.small ? 0.92 : 1)
                 color: Kirigami.Theme.textColor
             }
             Kirigami.Icon {

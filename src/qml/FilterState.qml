@@ -33,6 +33,16 @@ QtObject {
 
     signal focusRequested()
 
+    /// The colour of a tag, the same everywhere (chips, dots).
+    function tagHue(tag: string): color {
+        const palette = ["#2d7fb8", "#c2622a", "#3a8a55", "#7b57b0", "#2f8a83", "#b5456a", "#8a7a2a", "#5a6e8a"];
+        let h = 0;
+        for (let i = 0; i < tag.length; i++) {
+            h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+        }
+        return palette[h % palette.length];
+    }
+
     function hasTag(tag: string): bool {
         return tags.indexOf(tag) !== -1;
     }

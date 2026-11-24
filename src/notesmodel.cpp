@@ -56,7 +56,7 @@ NotesModel::NotesModel(QObject *parent)
     connect(NoteMetadata::instance(), &NoteMetadata::metadataChanged, this, [this](const QString &path) {
         const QModelIndex idx = mapFromSource(m_fsModel->index(path));
         if (idx.isValid()) {
-            Q_EMIT dataChanged(idx, idx, {Role::Icon, Role::IconIsEmoji, Role::Tags, Role::Created, Role::CreatedText});
+            Q_EMIT dataChanged(idx, idx, {Role::Icon, Role::IconIsEmoji, Role::Tags, Role::Created, Role::CreatedText, Role::CreatedShort});
         }
     });
 
@@ -191,6 +191,10 @@ QVariant NotesModel::data(const QModelIndex &index, int role) const
             return FrontMatter::fileCreationTime(m_fsModel->filePath(srcIndex));
         }
         return NoteMetadata::instance()->createdForFile(m_fsModel->filePath(srcIndex));
+    case Role::CreatedShort: {
+        const QDateTime created = data(index, Role::Created).toDateTime();
+        return NoteMetadata::instance()->formatCreatedShort(created);
+    }
     case Role::CreatedText: {
         const QDateTime created = data(index, Role::Created).toDateTime();
         return NoteMetadata::instance()->formatCreated(created);
@@ -224,6 +228,7 @@ QHash<int, QByteArray> NotesModel::roleNames() const
     roles[Role::IsFolder] = "isFolder";
     roles[Role::Created] = "created";
     roles[Role::CreatedText] = "createdText";
+    roles[Role::CreatedShort] = "createdShort";
     roles[Role::Icon] = "noteIcon";
     roles[Role::IconIsEmoji] = "noteIconIsEmoji";
     roles[Role::Tags] = "tags";

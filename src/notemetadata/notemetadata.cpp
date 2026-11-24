@@ -292,6 +292,27 @@ QString NoteMetadata::formatCreated(const QDateTime &created) const
     return QLocale().toString(date, QLocale::ShortFormat);
 }
 
+QString NoteMetadata::formatCreatedShort(const QDateTime &created) const
+{
+    if (!created.isValid()) {
+        return {};
+    }
+    const QLocale locale;
+    const QDateTime local = created.toLocalTime();
+    const QDate date = local.date();
+    const QDate today = QDate::currentDate();
+    if (date == today) {
+        return locale.toString(local.time(), QLocale::ShortFormat);
+    }
+    if (date.year() == today.year()) {
+        // "Nov 20", or "20 Nov" where the locale puts the day first.
+        const QString format = locale.dateFormat(QLocale::ShortFormat);
+        const bool dayFirst = format.indexOf(u'd') >= 0 && format.indexOf(u'd') < format.indexOf(u'M');
+        return locale.toString(date, dayFirst ? u"d MMM"_s : u"MMM d"_s);
+    }
+    return locale.toString(date, QLocale::ShortFormat);
+}
+
 QString NoteMetadata::normalizeTag(const QString &tag)
 {
     QString t = tag.trimmed();

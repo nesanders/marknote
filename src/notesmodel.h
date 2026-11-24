@@ -31,6 +31,7 @@ public:
         IsFolder,
         Created, ///< QDateTime: front matter "created", else file birth time
         CreatedText, ///< localized "Today at 09:12" / short date
+        CreatedShort, ///< compact "09:12" today, "Nov 20" this year, else short date
         Icon, ///< emoji or icon theme name ("" when unset)
         IconIsEmoji,
         Tags, ///< QStringList
