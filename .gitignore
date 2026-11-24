@@ -6,3 +6,11 @@ compile_commands.json
 .qtcreator
 .envrc
 .direnv
+
+# Fork: device-local sync state and anything holding an OAuth client or token.
+.marknote/
+*.local.json
+*.local.js
+.env
+.env.*
+client_secret*.json

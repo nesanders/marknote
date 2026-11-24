@@ -239,8 +239,9 @@ if (TARGET KF6::Wallet)
     target_compile_definitions(marknote_static PUBLIC HAVE_KWALLET)
 endif()
 
-# Optional OAuth client baked in at build time (e.g. from a CI secret), so users
-# do not have to create their own Google Cloud project.
+# Optional OAuth client baked in at build time, for private local builds only.
+# Never set this in CI for a public repository: anyone can download the
+# artifacts and read the client out of the binary.
 set(MARKNOTE_GOOGLE_CLIENT_ID "" CACHE STRING "Google OAuth client ID for Drive sync")
 set(MARKNOTE_GOOGLE_CLIENT_SECRET "" CACHE STRING "Google OAuth client secret (installed-app clients are not confidential)")
 if (MARKNOTE_GOOGLE_CLIENT_ID)

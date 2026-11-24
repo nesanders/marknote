@@ -61,7 +61,7 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   (`.marknote/trash`, or the Drive trash), never destroyed. An open note reloads when sync
   brings in a newer version.
 - Google Drive access uses the `drive.file` scope: Marknote can only see files it created.
-  The sign-in is kept in KDE Wallet.
+  The sign-in is kept in KDE Wallet. No OAuth client is shipped; see below.
 
 <table>
 <tr>
@@ -88,9 +88,10 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 
 ### Setting up Google Drive sync
 
-Google requires every app that signs in to have an OAuth client. Builds made with the
-repository secrets `MARKNOTE_GOOGLE_CLIENT_ID` and `MARKNOTE_GOOGLE_CLIENT_SECRET` include
-one; otherwise create your own (free, once):
+Google requires every app that signs in to have an OAuth client. This repository and
+its CI builds contain none: you create your own (free, once) and enter it on each device.
+It is stored only in that device's settings (`~/.config/marknoterc`), never in a notebook
+folder.
 
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and
    enable the **Google Drive API** (*APIs & Services › Library*).
@@ -101,8 +102,8 @@ one; otherwise create your own (free, once):
    says the app is unverified until you verify it.)
 3. *Credentials › Create credentials › OAuth client ID*, type **Desktop app**. Copy the
    client ID and secret.
-4. Either paste them into Marknote (*Sync Settings…* › *Google Drive*), or add them as the
-   two repository secrets above so CI builds have them built in.
+4. Paste them into Marknote (*Sync Settings…* › *Google Drive* › *Use my own Google OAuth
+   client*).
 
 Then choose *Sign in with Google…*. The browser opens Google's consent page and returns
 to Marknote on its own (it listens on `127.0.0.1` for the reply).

@@ -43,21 +43,6 @@ jobs:
           done
           exit 1
 
-      - name: Bake in the Google OAuth client (optional)
-        # Set repository secrets MARKNOTE_GOOGLE_CLIENT_ID / _SECRET to ship a build
-        # whose Drive sync works without users creating their own OAuth client.
-        env:
-          CLIENT_ID: ${{ secrets.MARKNOTE_GOOGLE_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.MARKNOTE_GOOGLE_CLIENT_SECRET }}
-        run: |
-          if [ -z "$CLIENT_ID" ]; then
-            echo "No Google OAuth client configured; users enter their own in the sync dialog."
-            exit 0
-          fi
-          jq --arg id "$CLIENT_ID" --arg secret "$CLIENT_SECRET" \
-            '(.modules[] | select(.name == "marknote") | ."config-opts") += ["-DMARKNOTE_GOOGLE_CLIENT_ID=" + $id, "-DMARKNOTE_GOOGLE_CLIENT_SECRET=" + $secret]' \
-            .flatpak-manifest.json > manifest.tmp && mv manifest.tmp .flatpak-manifest.json
-
       - name: Build with flatpak-builder and export to repo
         run: |
           flatpak-builder --user --force-clean \
