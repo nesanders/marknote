@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
 #include "raw_documenthandler.h"
+#include "crypto/vaults.h"
 
 #include <KColorScheme>
 #include <KLocalizedString>
@@ -47,14 +48,13 @@ void RawDocumentHandler::load(const QUrl &fileUrl)
     m_fileUrl = fileUrl;
     Q_EMIT fileUrlChanged();
 
-    QFile file(fileUrl.toLocalFile());
-    if (!file.open(QFile::ReadOnly))
+    QString content;
+    if (NoteIO::read(fileUrl.toLocalFile(), &content) != NoteIO::Status::Ok)
         return;
 
     if (QTextDocument *doc = textDocument()) {
         doc->setUndoRedoEnabled(false);
 
-        const QString content = QString::fromUtf8(file.readAll());
 
         Q_EMIT loaded(content, Qt::PlainText);
 
@@ -75,16 +75,11 @@ void RawDocumentHandler::saveAs(const QUrl &fileUrl)
     if (!doc)
         return;
 
-    QFile file(fileUrl.toLocalFile());
-    if (!file.open(QFile::WriteOnly | QFile::Truncate)) {
-        Q_EMIT error(tr("Cannot save: ") + file.errorString() + u' ' + fileUrl.toLocalFile());
+    QString writeError;
+    if (!NoteIO::write(fileUrl.toLocalFile(), doc->toPlainText(), &writeError)) {
+        Q_EMIT error(tr("Cannot save: ") + writeError + u' ' + fileUrl.toLocalFile());
         return;
     }
-
-    const QString content = doc->toPlainText();
-
-    file.write(content.toUtf8());
-    file.close();
 
     if (fileUrl == m_fileUrl)
         return;

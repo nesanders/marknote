@@ -25,6 +25,7 @@ target_include_directories(marknote_static PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/mdinlineparser
     ${CMAKE_CURRENT_SOURCE_DIR}/mermaid
     ${CMAKE_CURRENT_SOURCE_DIR}/sync
+    ${CMAKE_CURRENT_SOURCE_DIR}/crypto
 )
 
 set_source_files_properties(qml/EditorActions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -119,6 +120,7 @@ ecm_add_qml_module(marknote_static
         notemetadata/notemetadata.h notemetadata/notemetadata.cpp
         notemetadata/imagelinks.h notemetadata/imagelinks.cpp
         crypto/vaultcrypto.h crypto/vaultcrypto.cpp
+        crypto/vaults.h crypto/vaults.cpp
         sync/remotebackend.h
         sync/syncengine.h sync/syncengine.cpp
         sync/localfolderbackend.h sync/localfolderbackend.cpp

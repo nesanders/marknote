@@ -78,3 +78,9 @@ ecm_add_test(cryptotest.cpp
     LINK_LIBRARIES marknote_static Qt::Test
     NAME_PREFIX "marknote-"
 )
+
+ecm_add_test(vaultstest.cpp
+    TEST_NAME vaultstest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)

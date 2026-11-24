@@ -4,6 +4,7 @@
 
 #include "notesmodel.h"
 #include "mdtreemodel/mddatagenerator.h"
+#include "crypto/vaults.h"
 #include "notemetadata/imagelinks.h"
 #include "notemetadata/notemetadata.h"
 #include "notemetadata/frontmatter.h"
@@ -256,15 +257,12 @@ QString NotesModel::addNoteIn(const QUrl &parentFolder, const QString &name)
         return {};
     }
 
-    QFile file(path);
-    // QFile::NewOnly fails if the file already exists, closing the race between the check above and opening the file.
-    if (!file.open(QFile::WriteOnly | QFile::NewOnly)) {
-        Q_EMIT errorOccurred(i18nc("@info:status", "Unable to create note: %1", file.errorString()));
+    // Encrypted when the notebook is (NoteIO refuses while it is locked).
+    QString writeError;
+    if (!NoteIO::write(path, FrontMatter::join(FrontMatter::initialRaw(QDateTime::currentDateTime()), u"# "_s + name), &writeError)) {
+        Q_EMIT errorOccurred(i18nc("@info:status", "Unable to create note: %1", writeError));
         return {};
     }
-
-    file.write(FrontMatter::join(FrontMatter::initialRaw(QDateTime::currentDateTime()), u"# "_s + name).toUtf8());
-    file.close();
 
     updateTotalNotesCount();
     return path;
@@ -422,11 +420,11 @@ void NotesModel::duplicateNote(const QUrl &path)
 
 void NotesModel::copyWholeNote(const QUrl &path)
 {
-    QFile file(path.toLocalFile());
-    if (!file.open(QFile::ReadOnly))
+    QString text;
+    if (NoteIO::read(path.toLocalFile(), &text) != NoteIO::Status::Ok)
         return;
 
-    const QString markdown = FrontMatter::split(QString::fromUtf8(file.readAll())).body;
+    const QString markdown = FrontMatter::split(text).body;
 
     QTextDocument doc;
     doc.setMarkdown(markdown);
@@ -531,12 +529,12 @@ bool NotesModel::exportToPdf(const QUrl &path, const QUrl &destination)
 {
     if (!QFile::exists(path.toLocalFile()))
         return false;
-    QFile file(path.toLocalFile());
-    if (!file.open(QFile::ReadOnly))
+    QString text;
+    if (NoteIO::read(path.toLocalFile(), &text) != NoteIO::Status::Ok)
         return false;
 
     // Metadata stays out of exports.
-    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
+    QByteArray data = FrontMatter::split(text).body.toUtf8();
     QPdfWriter writer(destination.toLocalFile());
     writer.setTitle(path.toLocalFile().split(QLatin1Char('/')).constLast());
 
@@ -554,12 +552,12 @@ bool NotesModel::exportToHtml(const QUrl &path, const QUrl &destination)
 {
     if (!QFile::exists(path.toLocalFile()))
         return false;
-    QFile file(path.toLocalFile());
-    if (!file.open(QFile::ReadOnly))
+    QString text;
+    if (NoteIO::read(path.toLocalFile(), &text) != NoteIO::Status::Ok)
         return false;
 
     // Metadata stays out of exports.
-    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
+    QByteArray data = FrontMatter::split(text).body.toUtf8();
     QByteArray output;
 
 #if __has_include(<md4c-html.h>)
@@ -596,12 +594,12 @@ bool NotesModel::exportToOdt(const QUrl &path, const QUrl &destination)
 {
     if (!QFile::exists(path.toLocalFile()))
         return false;
-    QFile file(path.toLocalFile());
-    if (!file.open(QFile::ReadOnly))
+    QString text;
+    if (NoteIO::read(path.toLocalFile(), &text) != NoteIO::Status::Ok)
         return false;
 
     // Metadata stays out of exports.
-    QByteArray data = FrontMatter::split(QString::fromUtf8(file.readAll())).body.toUtf8();
+    QByteArray data = FrontMatter::split(text).body.toUtf8();
 
     QTextDocument doc;
     // Relative image links are relative to the note.

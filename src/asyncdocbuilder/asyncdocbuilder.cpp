@@ -3,6 +3,7 @@
 
 #include "asyncdocbuilder.h"
 
+#include "crypto/vaults.h"
 #include "notemetadata/frontmatter.h"
 
 #include <QFile>
@@ -35,15 +36,17 @@ void AsyncDocBuilder::parseDocument(QPromise<DocPointer> &promise, const QString
 {
     MD::Parser parser;
 
-    QFile file(filePath);
-    if (!file.open(QFile::ReadOnly)) {
+    // Encrypted notes are decrypted here; a locked one opens empty (and is
+    // never saved: NoteIO refuses to write into a locked notebook).
+    QString text;
+    if (NoteIO::read(filePath, &text) == NoteIO::Status::Error && !QFile::exists(filePath)) {
         promise.addResult(parser.parse(filePath, false));
         return;
     }
 
     // Front matter (id, created, icon, tags) is note metadata, not content:
     // keep it out of the block editor. MDTreeModel::saveToFile puts it back.
-    const FrontMatter::Split parts = FrontMatter::split(QString::fromUtf8(file.readAll()));
+    const FrontMatter::Split parts = FrontMatter::split(text);
     QByteArray body = parts.body.toUtf8();
     QTextStream stream(&body);
     stream.setEncoding(QStringConverter::Utf8);
