@@ -1,5 +1,8 @@
 {
-    "id": "org.kde.marknote",
+    "id": "io.github.nesanders.marknote",
+    "rename-desktop-file": "org.kde.marknote.desktop",
+    "rename-icon": "org.kde.marknote",
+    "rename-appdata-file": "org.kde.marknote.metainfo.xml",
     "runtime": "org.kde.Platform",
     "runtime-version": "6.11",
     "sdk": "org.kde.Sdk",

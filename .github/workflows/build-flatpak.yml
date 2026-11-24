@@ -53,7 +53,7 @@ jobs:
 
       - name: Build single-file bundle
         run: |
-          flatpak build-bundle flatpak-repo marknote.flatpak org.kde.marknote
+          flatpak build-bundle flatpak-repo marknote.flatpak io.github.nesanders.marknote
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -61,3 +61,79 @@ jobs:
           name: marknote-flatpak
           path: marknote.flatpak
           if-no-files-found: error
+
+      # ---- Flatpak repository, so installs update with `flatpak update` ----
+      # Signed with the key in the FLATPAK_GPG_PRIVATE_KEY secret (never in the
+      # repository). The "Web app (GitHub Pages)" workflow publishes it at
+      # https://<owner>.github.io/<repo>/flatpak/. Branches without the secret
+      # use a throwaway key, only to check that this part works.
+      - name: Sign the repository and write the install files
+        id: repo
+        env:
+          GPG_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          IS_MASTER: ${{ github.ref == 'refs/heads/master' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ostree
+          export GNUPGHOME="$(mktemp -d)"
+          if [ -n "$GPG_KEY" ]; then
+            printf '%s\n' "$GPG_KEY" | gpg --batch --import
+          elif [ "$IS_MASTER" = true ]; then
+            echo "::warning::No FLATPAK_GPG_PRIVATE_KEY secret: the Flatpak repository is not published. See README › Installing this fork."
+            exit 0
+          else
+            gpg --batch --passphrase '' --quick-gen-key "Marknote CI throwaway <ci@invalid>" ed25519 sign 1d
+          fi
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+          APP=io.github.nesanders.marknote
+
+          # Debug symbols are large and not needed for updates.
+          for ref in $(ostree refs --repo=flatpak-repo | grep '\.Debug/' || true); do
+            ostree refs --repo=flatpak-repo --delete "$ref"
+          done
+          flatpak build-sign flatpak-repo "$APP" master --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
+          for ref in $(ostree refs --repo=flatpak-repo | grep "^app/$APP\.Locale/\|^runtime/$APP\.Locale/" || true); do
+            flatpak build-sign flatpak-repo "$(echo "$ref" | cut -d/ -f2)" master --runtime --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
+          done
+          flatpak build-update-repo flatpak-repo --prune --default-branch=master \
+            --title="Marknote (${GITHUB_REPOSITORY_OWNER})" \
+            --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          BASE="https://${OWNER}.github.io/${GITHUB_REPOSITORY#*/}/flatpak"
+          KEY=$(gpg --export "$KEY_ID" | base64 -w0)
+          mkdir -p site/flatpak
+          mv flatpak-repo site/flatpak/repo
+          printf '%s\n' "[Flatpak Repo]" "Title=Marknote (${GITHUB_REPOSITORY_OWNER})" "Url=${BASE}/repo/" \
+            "Homepage=https://github.com/${GITHUB_REPOSITORY}" "Comment=Builds of this Marknote fork" \
+            "GPGKey=${KEY}" "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo" \
+            > site/flatpak/marknote.flatpakrepo
+          printf '%s\n' "[Flatpak Ref]" "Name=${APP}" "Branch=master" "Title=Marknote (${GITHUB_REPOSITORY_OWNER})" \
+            "Url=${BASE}/repo/" "SuggestRemoteName=marknote" "IsRuntime=false" "GPGKey=${KEY}" \
+            "RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo" \
+            > site/flatpak/marknote.flatpakref
+          du -sh site/flatpak
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check the repository is installable
+        if: steps.repo.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          # A fresh user installation, as a person would set it up.
+          export FLATPAK_USER_DIR="$(mktemp -d)"
+          flatpak remote-add --user --from check site/flatpak/marknote.flatpakrepo
+          # Serve the files over HTTP like GitHub Pages does.
+          (cd site && python3 -m http.server 8099 >/dev/null 2>&1 &)
+          sleep 2
+          flatpak remote-modify --user check --url=http://127.0.0.1:8099/flatpak/repo/
+          flatpak remote-ls --user check
+          flatpak remote-ls --user check | grep -q io.github.nesanders.marknote
+
+      - name: Upload the repository for GitHub Pages
+        if: steps.repo.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: marknote-flatpak-repo
+          path: site
+          if-no-files-found: error
+          retention-days: 90

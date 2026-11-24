@@ -23,6 +23,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
     if (event.request.method !== 'GET' || url.origin !== location.origin) return;
+    if (url.pathname.includes('/flatpak/')) return; // the desktop app's Flatpak repository
     if (event.request.mode === 'navigate') {
         // The page itself: network first (fresh deploys), cached copy offline.
         event.respondWith(fetch(event.request).catch(() => caches.match('./index.html').then((r) => r ?? caches.match('./'))));

@@ -173,14 +173,51 @@ to Marknote on its own (it listens on `127.0.0.1` for the reply).
 
 ### Installing this fork
 
-Builds come from GitHub Actions (*Actions › Build Flatpak* › a successful run › **Artifacts**).
-Download `marknote-flatpak`, unzip it, then:
+This fork installs as its own app, **`io.github.nesanders.marknote`** (shown as "Marknote"),
+next to the official Marknote if you have that too. GitHub Actions publishes every build of
+`master` to a signed Flatpak repository, so installs update like any other Flatpak:
 
 ```sh
-flatpak install --user flathub org.kde.Platform//6.11
-flatpak install --user --reinstall marknote.flatpak
-flatpak run org.kde.marknote
+flatpak install --user https://nesanders.github.io/marknote/flatpak/marknote.flatpakref
+flatpak run io.github.nesanders.marknote
 ```
+
+Updates then come with `flatpak update` or Discover. (The KDE runtime comes from Flathub,
+which the command sets up if needed. The repository's key is in the `.flatpakref` file.)
+
+**Moving from a manually installed build** (app id `org.kde.marknote`): your notes stay where
+they are (`~/Documents/Notes`). To keep your settings (Google OAuth client, account,
+view options), copy them once before the first start of the new app, then remove the old one:
+
+```sh
+mkdir -p ~/.var/app/io.github.nesanders.marknote
+cp -a ~/.var/app/org.kde.marknote/. ~/.var/app/io.github.nesanders.marknote/
+flatpak uninstall --user org.kde.marknote
+```
+
+The Google sign-in is kept in KDE Wallet and works for the new app as well.
+
+Single builds are also available as files: *Actions › Build Flatpak* › a run › **Artifacts** ›
+`marknote-flatpak` (`flatpak install --user --reinstall marknote.flatpak`).
+
+<details><summary>Setting up the repository (owner of this GitHub repository, once)</summary>
+
+The repository is signed with a GPG key whose private half is stored only as a GitHub
+Actions secret. Create a key without a passphrase, just for this:
+
+```sh
+export GNUPGHOME="$(mktemp -d)"
+gpg --batch --passphrase '' --quick-gen-key "Marknote Flatpak builds" ed25519 sign never
+gpg --armor --export-secret-keys > marknote-flatpak-key.asc
+```
+
+Add the contents of `marknote-flatpak-key.asc` as the secret `FLATPAK_GPG_PRIVATE_KEY`
+(*Settings › Secrets and variables › Actions › New repository secret*), then delete the
+file (`shred -u marknote-flatpak-key.asc`) and `$GNUPGHOME`. Keep a copy in your password
+manager if you like: a new key later means everyone has to add the repository again.
+The next build of `master` publishes the repository at `/flatpak/` on the GitHub Pages site.
+
+</details>
 
 Back up your notes folder first (default `~/Documents/Notes`): editing a note adds the
 front matter described above.
