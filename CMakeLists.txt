@@ -49,7 +49,7 @@ if (NOT ANDROID AND NOT WIN32 AND NOT APPLE AND NOT HAIKU)
     option(WITH_KRUNNER "Build with Plasma Runner support." ON)
 endif()
 
-find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml QuickControls2 Svg)
+find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml QuickControls2 Svg Network NetworkAuth)
 find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Kirigami I18n Config CoreAddons IconThemes ColorScheme Notifications ItemModels Mime)
 
 if (NOT ANDROID AND KF6CoreAddons_VERSION VERSION_LESS "6.19.0")

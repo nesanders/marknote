@@ -115,6 +115,10 @@ ecm_add_qml_module(marknote_static
         asyncdocbuilder/asyncdocbuilder.h asyncdocbuilder/asyncdocbuilder.cpp
         notemetadata/frontmatter.h notemetadata/frontmatter.cpp
         notemetadata/notemetadata.h notemetadata/notemetadata.cpp
+        sync/remotebackend.h
+        sync/syncengine.h sync/syncengine.cpp
+        sync/localfolderbackend.h sync/localfolderbackend.cpp
+        sync/googledrivebackend.h sync/googledrivebackend.cpp
         mdoptions/mdoptions.h
         mdtreemodel/treeitem.h mdtreemodel/treeitem.cpp
         mdtreemodel/mdtreemodel.h mdtreemodel/mdtreemodel.cpp
@@ -164,6 +168,8 @@ add_subdirectory(settings)
 
 target_link_libraries(marknote_static
     PUBLIC
+        Qt::Network
+        Qt::NetworkAuth
         Qt::Core
         Qt::Gui
         Qt::Qml
