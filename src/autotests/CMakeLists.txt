@@ -54,4 +54,9 @@ if(TARGET Qt6::HttpServer)
         LINK_LIBRARIES marknote_static Qt::Test Qt6::HttpServer
         NAME_PREFIX "marknote-"
     )
+    ecm_add_test(googleauthtest.cpp
+        TEST_NAME googleauthtest
+        LINK_LIBRARIES marknote_static Qt::Test Qt6::HttpServer
+        NAME_PREFIX "marknote-"
+    )
 endif()

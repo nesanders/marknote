@@ -51,6 +51,27 @@ QtObject {
         onTriggered: root.window.openNewEntryDialog(1, "")
     }
 
+    property Kirigami.Action syncNow: Kirigami.Action {
+        text: SyncManager.runningNotebook.length > 0
+            ? KI18n.i18nc("@action:inmenu", "Syncing…")
+            : KI18n.i18nc("@action:inmenu", "Sync Notebook Now")
+        icon.name: "view-refresh"
+        shortcut: "Ctrl+Alt+S"
+        enabled: root.hasNotebook && SyncManager.runningNotebook.length === 0
+        onTriggered: {
+            if (!SyncManager.syncNow(NavigationController.notebookPath)) {
+                root.window.openSyncDialog(NavigationController.notebookPath, NavigationController.notebookName);
+            }
+        }
+    }
+
+    property Kirigami.Action syncSettings: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Notebook Sync Settings…")
+        icon.name: "folder-sync"
+        enabled: root.hasNotebook
+        onTriggered: root.window.openSyncDialog(NavigationController.notebookPath, NavigationController.notebookName)
+    }
+
     property Kirigami.Action exportHtml: Kirigami.Action {
         text: KI18n.i18nc("@action:inmenu", "Export to HTML…")
         icon.name: "text-html"

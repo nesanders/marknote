@@ -77,6 +77,8 @@ public Q_SLOTS:
     virtual void load(const QUrl &fileUrl) = 0;
     virtual void saveAs(const QUrl &fileUrl) = 0;
     virtual void updateFileUrl(const QUrl &newUrl);
+    /// The files changed on disk (e.g. after a sync): re-read the open one.
+    virtual void reloadFiles(const QList<QUrl> &fileUrls);
 
 Q_SIGNALS:
     void documentChanged();

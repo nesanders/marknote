@@ -125,6 +125,16 @@ void NoteMetadata::bump(const QString &path)
     Q_EMIT revisionChanged();
 }
 
+void NoteMetadata::filesChanged(const QStringList &paths)
+{
+    for (const QString &path : paths) {
+        m_cache.remove(path);
+        m_bodyCache.remove(path);
+    }
+    ++m_revision;
+    Q_EMIT revisionChanged();
+}
+
 bool NoteMetadata::setIcon(const QUrl &note, const QString &icon)
 {
     return editFrontMatter(localPath(note), [&icon](const QString &raw) {

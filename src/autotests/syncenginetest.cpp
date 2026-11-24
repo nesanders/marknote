@@ -211,6 +211,32 @@ private Q_SLOTS:
         QVERIFY(!QFileInfo::exists(remote + u"/.marknote/sync"_s));
     }
 
+    void testLastOpenedNoteStaysOnTheDevice()
+    {
+        write(a + u"/.directory"_s, "[Desktop Entry]\nX-MarkNote-LastEntry=One.md\nIcon=folder-blue\n");
+        syncDevice(a);
+        QVERIFY(!read(remote + u"/.directory"_s).contains("LastEntry"));
+        syncDevice(b);
+        QCOMPARE(read(b + u"/.directory"_s), QByteArray("[Desktop Entry]\nIcon=folder-blue\n"));
+
+        // Each device opens other notes: nothing to sync, no conflicts.
+        write(b + u"/.directory"_s, "[Desktop Entry]\nIcon=folder-blue\nX-MarkNote-LastEntry=Two.md\n");
+        write(a + u"/.directory"_s, "[Desktop Entry]\nX-MarkNote-LastEntry=Three.md\nIcon=folder-blue\n");
+        QCOMPARE(syncDevice(b).changes(), 0);
+        QCOMPARE(syncDevice(a).changes(), 0);
+
+        // A real change (the icon) travels, and B keeps its own last note.
+        write(a + u"/.directory"_s, "[Desktop Entry]\nX-MarkNote-LastEntry=Three.md\nIcon=folder-red\n");
+        QCOMPARE(syncDevice(a).uploaded, 1);
+        const SyncResult r = syncDevice(b);
+        QCOMPARE(r.downloaded, 1);
+        QCOMPARE(r.conflicts, 0);
+        const QByteArray onB = read(b + u"/.directory"_s);
+        QVERIFY(onB.contains("Icon=folder-red"));
+        QVERIFY(onB.contains("X-MarkNote-LastEntry=Two.md"));
+        QCOMPARE(syncDevice(b).changes(), 0);
+    }
+
     void testListingFailureChangesNothing()
     {
         write(a + u"/Note.md"_s, "x");

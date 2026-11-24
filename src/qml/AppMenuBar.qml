@@ -68,6 +68,9 @@ Controls.MenuBar {
             Controls.MenuItem { action: root.actions.exportOdt }
         }
         Controls.MenuSeparator {}
+        Controls.MenuItem { action: root.actions.syncNow }
+        Controls.MenuItem { action: root.actions.syncSettings }
+        Controls.MenuSeparator {}
         AppActionItem { actionName: "file_quit"; iconName: "application-exit"; shortcutText: "Ctrl+Q" }
     }
 

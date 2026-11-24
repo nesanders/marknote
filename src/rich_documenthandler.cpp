@@ -327,3 +327,30 @@ void RichDocumentHandler::clearSearch()
 }
 
 #include "moc_rich_documenthandler.cpp"
+
+void RichDocumentHandler::reloadFiles(const QList<QUrl> &fileUrls)
+{
+    // Drop cached parses of changed files so the next open reads the new text.
+    bool current = false;
+    for (const QUrl &url : fileUrls) {
+        if (url == m_fileUrl) {
+            current = true;
+        }
+        if (MDTreeModel *model = m_models.take(url)) {
+            if (model != m_mdTreeModel) {
+                model->deleteLater();
+            }
+        }
+        m_savedMarkdown.remove(url);
+        m_pendingLoads.remove(url);
+    }
+    if (current) {
+        MDTreeModel *old = m_mdTreeModel;
+        const QUrl url = m_fileUrl;
+        m_fileUrl.clear();
+        load(url);
+        if (old && old != m_mdTreeModel) {
+            old->deleteLater();
+        }
+    }
+}

@@ -68,6 +68,12 @@ public:
     static QByteArray md5Hex(const QByteArray &data);
     /// Paths the engine never syncs (its own state, the local trash).
     static bool isExcluded(const QString &relativePath);
+
+    /// What of a local file is synced. Device-local keys (the note last opened
+    /// in a notebook, kept in its .directory) are left out, so they never conflict.
+    static QByteArray syncedContent(const QString &relativePath, const QByteArray &localData);
+    /// Incoming content plus the device-local keys of the file it replaces.
+    static QByteArray withLocalKeys(const QString &relativePath, const QByteArray &incoming, const QByteArray &currentLocal);
     /// "Note (conflict 2026-11-24 0912).md" next to @p relativePath, unique on disk.
     QString conflictCopyPath(const QString &relativePath) const;
 

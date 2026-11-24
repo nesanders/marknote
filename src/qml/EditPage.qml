@@ -818,6 +818,23 @@ Kirigami.Page {
     }
 
     Connections {
+        target: SyncManager
+        // Sync reads files from disk: write pending edits first…
+        function onAboutToSync(notebookPath: string): void {
+            if (!root.saved && root.document && root.noteFullPath.toString().length > 0) {
+                root.document.saveAs(root.noteFullPath);
+                root.saved = true;
+            }
+        }
+        // …and show what it brought in.
+        function onFilesChanged(fileUrls: list<url>, filePaths: list<string>): void {
+            if (root.document) {
+                root.document.reloadFiles(fileUrls);
+            }
+        }
+    }
+
+    Connections {
         target: NavigationController
         function onNoteRenamedSignal(oldUrl, newUrl) {
             root.oldPath = newUrl.toString();

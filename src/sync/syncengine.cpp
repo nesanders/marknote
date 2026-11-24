@@ -101,6 +101,60 @@ QString SyncEngine::conflictCopyPath(const QString &relativePath) const
     return candidate;
 }
 
+namespace
+{
+bool isDirectoryFile(const QString &relativePath)
+{
+    return relativePath == u".directory"_s || relativePath.endsWith(u"/.directory"_s);
+}
+
+bool isDeviceLocalLine(const QByteArray &line)
+{
+    return line.trimmed().startsWith("X-MarkNote-LastEntry=");
+}
+} // namespace
+
+QByteArray SyncEngine::syncedContent(const QString &relativePath, const QByteArray &localData)
+{
+    if (!isDirectoryFile(relativePath) || !localData.contains("X-MarkNote-LastEntry=")) {
+        return localData;
+    }
+    QByteArray out;
+    for (const QByteArray &line : localData.split('\n')) {
+        if (!isDeviceLocalLine(line)) {
+            out += line + '\n';
+        }
+    }
+    out.chop(1); // split() added one line for the final newline
+    return out;
+}
+
+QByteArray SyncEngine::withLocalKeys(const QString &relativePath, const QByteArray &incoming, const QByteArray &currentLocal)
+{
+    if (!isDirectoryFile(relativePath)) {
+        return incoming;
+    }
+    QByteArrayList keep;
+    for (const QByteArray &line : currentLocal.split('\n')) {
+        if (isDeviceLocalLine(line)) {
+            keep << line.trimmed();
+        }
+    }
+    if (keep.isEmpty()) {
+        return incoming;
+    }
+    QByteArrayList lines = incoming.split('\n');
+    const qsizetype group = lines.indexOf("[Desktop Entry]");
+    if (group < 0) {
+        lines.prepend("[Desktop Entry]");
+    }
+    const qsizetype at = (group < 0 ? 0 : group) + 1;
+    for (qsizetype i = 0; i < keep.size(); ++i) {
+        lines.insert(at + i, keep.at(i));
+    }
+    return lines.join('\n');
+}
+
 bool SyncEngine::writeLocal(const QString &relativePath, const QByteArray &data, QString *error)
 {
     const QString path = absolute(relativePath);
@@ -164,7 +218,7 @@ SyncResult SyncEngine::run(const Progress &progress)
         } else if (info.isFile()) {
             QFile f(abs);
             if (f.open(QFile::ReadOnly)) {
-                localFiles.insert(rel, md5Hex(f.readAll()));
+                localFiles.insert(rel, md5Hex(syncedContent(rel, f.readAll())));
             } else {
                 result.errors << u"Cannot read %1"_s.arg(rel);
             }
@@ -206,7 +260,7 @@ SyncResult SyncEngine::run(const Progress &progress)
             result.errors << u"Cannot read %1"_s.arg(path);
             return false;
         }
-        const QByteArray data = f.readAll();
+        const QByteArray data = syncedContent(path, f.readAll());
         RemoteFile uploaded;
         QString err;
         if (!m_backend->upload(path, data, existing, &uploaded, &err)) {
@@ -220,7 +274,16 @@ SyncResult SyncEngine::run(const Progress &progress)
     auto download = [&](const RemoteFile &rf, const QString &targetPath) -> bool {
         QByteArray data;
         QString err;
-        if (!m_backend->download(rf, &data, &err) || !writeLocal(targetPath, data, &err)) {
+        if (!m_backend->download(rf, &data, &err)) {
+            result.errors << err;
+            return false;
+        }
+        QFile current(absolute(targetPath));
+        if (current.open(QFile::ReadOnly)) {
+            data = withLocalKeys(targetPath, data, current.readAll());
+            current.close();
+        }
+        if (!writeLocal(targetPath, data, &err)) {
             result.errors << err;
             return false;
         }

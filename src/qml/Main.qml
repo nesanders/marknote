@@ -181,6 +181,15 @@ StatetfulApp.StatefulWindow {
         component.createObject(root, { targetUrl: url, isFolder: isFolder, targetName: name }).open();
     }
 
+    function openSyncDialog(path: string, name: string): void {
+        const component = Qt.createComponent("org.kde.marknote", "NotebookSyncDialog");
+        if (component.status !== Component.Ready) {
+            console.error(component.errorString());
+            return;
+        }
+        component.createObject(root, { notebookPath: path, notebookName: name }).open();
+    }
+
     function openTagEditor(url: url, name: string): void {
         const component = Qt.createComponent("org.kde.marknote", "TagEditorDialog");
         if (component.status !== Component.Ready) {
@@ -188,6 +197,23 @@ StatetfulApp.StatefulWindow {
             return;
         }
         component.createObject(root, { noteUrl: url, noteName: name }).open();
+    }
+
+    Connections {
+        target: SyncManager
+
+        function onFilesChanged(fileUrls: list<url>, filePaths: list<string>): void {
+            NoteMetadata.filesChanged(filePaths);
+        }
+
+        function onSyncFinished(notebookPath: string, ok: bool, summary: string, errors: list<string>): void {
+            const name = notebookPath.split("/").filter(p => p.length > 0).pop() ?? "";
+            if (ok) {
+                root.showPassiveNotification(i18nc("@info:status %1 is a notebook, %2 a summary", "%1: %2", name, summary));
+            } else {
+                root.showPassiveNotification(i18nc("@info:status %1 is a notebook, %2 the first error", "Sync of %1 failed: %2", name, errors.length > 0 ? errors[0] : summary), "long");
+            }
+        }
     }
 
     Connections {

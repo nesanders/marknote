@@ -51,6 +51,10 @@ endif()
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml QuickControls2 Svg Network NetworkAuth)
 find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Kirigami I18n Config CoreAddons IconThemes ColorScheme Notifications ItemModels Mime)
+if (NOT ANDROID)
+    # Keeps the Google sign-in in KDE Wallet; without it a private file is used.
+    find_package(KF6Wallet ${KF_MIN_VERSION})
+endif()
 
 if (NOT ANDROID AND KF6CoreAddons_VERSION VERSION_LESS "6.19.0")
     option(WITH_KCRASH "Build with KCrash support as KCoreAddons is not new enough." ON)

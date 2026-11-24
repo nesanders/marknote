@@ -69,6 +69,9 @@ public:
     /// Normalise a user-entered tag: trimmed, no leading '#', spaces → '-'.
     Q_INVOKABLE static QString normalizeTag(const QString &tag);
 
+    /// Files were changed behind our back (e.g. by sync); re-read them.
+    Q_INVOKABLE void filesChanged(const QStringList &paths);
+
 Q_SIGNALS:
     void revisionChanged();
     void metadataChanged(const QString &path);

@@ -1,0 +1,355 @@
+// SPDX-FileCopyrightText: 2026 Marknote fork contributors
+// SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+
+#include "syncmanager.h"
+
+#include "googledrivebackend.h"
+#include "localfolderbackend.h"
+
+#include <marknotesettings.h>
+
+#include <KLocalizedString>
+
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPointer>
+#include <QSaveFile>
+#include <QThread>
+
+#include <memory>
+
+using namespace Qt::StringLiterals;
+
+namespace Sync
+{
+
+namespace
+{
+QPointer<SyncManager> s_instance;
+
+QJsonObject readConfig(const QString &notebookPath)
+{
+    QFile f(SyncManager::configPath(notebookPath));
+    if (!f.open(QFile::ReadOnly)) {
+        return {};
+    }
+    return QJsonDocument::fromJson(f.readAll()).object();
+}
+
+bool writeConfig(const QString &notebookPath, const QJsonObject &json)
+{
+    const QString path = SyncManager::configPath(notebookPath);
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile f(path);
+    if (!f.open(QFile::WriteOnly)) {
+        return false;
+    }
+    f.write(QJsonDocument(json).toJson());
+    return f.commit();
+}
+
+/// A different destination gets a different base state.
+QString statePathFor(const QString &notebookPath, const QString &destination, const QString &target)
+{
+    const QByteArray hash = QCryptographicHash::hash((destination + u'\n' + target).toUtf8(), QCryptographicHash::Sha1).toHex().left(12);
+    return notebookPath + u"/.marknote/sync/state-"_s + destination + u'-' + QString::fromLatin1(hash) + u".json"_s;
+}
+} // namespace
+
+SyncManager::SyncManager(QObject *parent)
+    : QObject(parent)
+    , m_google(new GoogleAuth(TokenStore::createDefault(), this))
+{
+#ifdef MARKNOTE_GOOGLE_CLIENT_ID
+    m_builtInClientId = QStringLiteral(MARKNOTE_GOOGLE_CLIENT_ID);
+#endif
+#ifdef MARKNOTE_GOOGLE_CLIENT_SECRET
+    m_builtInClientSecret = QStringLiteral(MARKNOTE_GOOGLE_CLIENT_SECRET);
+#endif
+    auto *config = Config::self();
+    const QString id = config->googleClientId().isEmpty() ? m_builtInClientId : config->googleClientId();
+    const QString secret = config->googleClientId().isEmpty() ? m_builtInClientSecret : config->googleClientSecret();
+    m_google->setClientCredentials(id, secret);
+    m_google->setAccount(config->googleAccount());
+    connect(m_google, &GoogleAuth::accountChanged, this, [this]() {
+        Config::self()->setGoogleAccount(m_google->account());
+        Config::self()->save();
+    });
+    // Only touch the wallet if this device signed in before: no prompt otherwise.
+    if (!config->googleAccount().isEmpty()) {
+        m_google->restore();
+    }
+}
+
+SyncManager *SyncManager::create(QQmlEngine *qmlEngine, QJSEngine *jsEngine)
+{
+    Q_UNUSED(qmlEngine)
+    Q_UNUSED(jsEngine)
+    SyncManager *manager = instance();
+    QJSEngine::setObjectOwnership(manager, QJSEngine::CppOwnership);
+    return manager;
+}
+
+SyncManager *SyncManager::instance()
+{
+    if (!s_instance) {
+        s_instance = new SyncManager(qApp);
+    }
+    return s_instance;
+}
+
+GoogleAuth *SyncManager::google() const
+{
+    return m_google;
+}
+
+QString SyncManager::runningNotebook() const
+{
+    return m_running;
+}
+
+QString SyncManager::progress() const
+{
+    return m_progress;
+}
+
+QString SyncManager::googleClientId() const
+{
+    return Config::self()->googleClientId();
+}
+
+bool SyncManager::googleClientBuiltIn() const
+{
+    return !m_builtInClientId.isEmpty();
+}
+
+void SyncManager::setGoogleClient(const QString &clientId, const QString &clientSecret)
+{
+    auto *config = Config::self();
+    const bool changed = config->googleClientId() != clientId.trimmed() || config->googleClientSecret() != clientSecret.trimmed();
+    config->setGoogleClientId(clientId.trimmed());
+    config->setGoogleClientSecret(clientSecret.trimmed());
+    config->save();
+    if (clientId.trimmed().isEmpty()) {
+        m_google->setClientCredentials(m_builtInClientId, m_builtInClientSecret);
+    } else {
+        m_google->setClientCredentials(clientId, clientSecret);
+    }
+    if (changed && m_google->signedIn()) {
+        // A refresh token only works with the client that issued it.
+        m_google->signOut();
+    }
+    Q_EMIT googleClientChanged();
+}
+
+QString SyncManager::cleanNotebookPath(const QString &notebookPath)
+{
+    QString path = notebookPath;
+    if (path.startsWith(u"file:"_s)) {
+        path = QUrl(path).toLocalFile();
+    }
+    return QDir::cleanPath(path);
+}
+
+QString SyncManager::configPath(const QString &notebookPath)
+{
+    return cleanNotebookPath(notebookPath) + u"/.marknote/sync/config.json"_s;
+}
+
+QString SyncManager::defaultRemoteFolder(const QString &notebookPath) const
+{
+    return u"Marknote/"_s + QFileInfo(cleanNotebookPath(notebookPath)).fileName();
+}
+
+QVariantMap SyncManager::settings(const QString &notebookPath) const
+{
+    const QString path = cleanNotebookPath(notebookPath);
+    const QJsonObject json = readConfig(path);
+    QVariantMap out;
+    out[u"destination"_s] = json.value(u"destination"_s).toString(u"none"_s);
+    out[u"remoteFolder"_s] = json.value(u"remoteFolder"_s).toString(defaultRemoteFolder(path));
+    out[u"localFolder"_s] = json.value(u"localFolder"_s).toString();
+    out[u"lastSync"_s] = QDateTime::fromString(json.value(u"lastSync"_s).toString(), Qt::ISODate);
+    out[u"lastOk"_s] = json.value(u"lastOk"_s).toBool(true);
+    out[u"lastSummary"_s] = json.value(u"lastSummary"_s).toString();
+    out[u"lastErrors"_s] = json.value(u"lastErrors"_s).toVariant().toStringList();
+    return out;
+}
+
+bool SyncManager::saveSettings(const QString &notebookPath, const QVariantMap &settings)
+{
+    const QString path = cleanNotebookPath(notebookPath);
+    QJsonObject json = readConfig(path);
+    for (const auto &key : {u"destination"_s, u"remoteFolder"_s, u"localFolder"_s}) {
+        if (settings.contains(key)) {
+            QString value = settings.value(key).toString().trimmed();
+            if (key == u"localFolder"_s && value.startsWith(u"file:"_s)) {
+                value = QUrl(value).toLocalFile();
+            }
+            if (key == u"remoteFolder"_s) {
+                while (value.endsWith(u'/')) {
+                    value.chop(1);
+                }
+            }
+            json[key] = value;
+        }
+    }
+    return writeConfig(path, json);
+}
+
+bool SyncManager::syncNow(const QString &notebookPath)
+{
+    const QString path = cleanNotebookPath(notebookPath);
+    if (settings(path).value(u"destination"_s).toString() == u"none"_s) {
+        return false;
+    }
+    if (m_running == path || m_queue.contains(path)) {
+        return true;
+    }
+    m_queue.append(path);
+    if (m_running.isEmpty()) {
+        startNext();
+    }
+    return true;
+}
+
+void SyncManager::syncAll(const QString &storagePath)
+{
+    const QDir root(cleanNotebookPath(storagePath));
+    const auto notebooks = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo &info : notebooks) {
+        if (QFile::exists(configPath(info.filePath()))) {
+            syncNow(info.filePath());
+        }
+    }
+}
+
+void SyncManager::startNext()
+{
+    if (m_queue.isEmpty()) {
+        return;
+    }
+    const QString path = m_queue.takeFirst();
+    const QVariantMap config = settings(path);
+    const QString destination = config.value(u"destination"_s).toString();
+
+    m_running = path;
+    m_progress = i18n("Starting…");
+    Q_EMIT runningChanged();
+    Q_EMIT progressChanged();
+    Q_EMIT aboutToSync(path);
+
+    std::function<std::unique_ptr<RemoteBackend>()> makeBackend;
+    QString target;
+    QString setupError;
+    if (destination == u"google"_s) {
+        target = config.value(u"remoteFolder"_s).toString();
+        if (!m_google->signedIn()) {
+            setupError = i18n("Sign in to Google Drive first.");
+        } else if (target.isEmpty()) {
+            setupError = i18n("Choose a Google Drive folder.");
+        }
+        const auto tokens = m_google->tokenProvider();
+        const QString apiBase = m_google->endpoints().apiBase;
+        makeBackend = [target, tokens, apiBase]() {
+            return std::make_unique<GoogleDriveBackend>(target, tokens, apiBase);
+        };
+    } else if (destination == u"folder"_s) {
+        target = QDir::cleanPath(config.value(u"localFolder"_s).toString());
+        if (config.value(u"localFolder"_s).toString().isEmpty()) {
+            setupError = i18n("Choose a folder to sync with.");
+        } else if (target == path || target.startsWith(path + u'/') || path.startsWith(target + u'/')) {
+            setupError = i18n("The sync folder cannot be inside the notebook, or the other way round.");
+        }
+        makeBackend = [target]() {
+            return std::make_unique<LocalFolderBackend>(target);
+        };
+    } else {
+        setupError = i18n("This notebook has no sync destination.");
+    }
+
+    if (!setupError.isEmpty()) {
+        SyncResult result;
+        result.errors << setupError;
+        finished(path, result);
+        return;
+    }
+
+    const QString statePath = statePathFor(path, destination, target);
+    auto result = std::make_shared<SyncResult>();
+    QPointer<SyncManager> self(this);
+    QThread *thread = QThread::create([path, statePath, makeBackend, result, self]() {
+        std::unique_ptr<RemoteBackend> backend = makeBackend();
+        SyncEngine engine(path, backend.get(), statePath);
+        *result = engine.run([self](const QString &message) {
+            QMetaObject::invokeMethod(qApp, [self, message]() {
+                if (self) {
+                    self->m_progress = message;
+                    Q_EMIT self->progressChanged();
+                }
+            });
+        });
+    });
+    connect(thread, &QThread::finished, this, [this, thread, path, result]() {
+        thread->deleteLater();
+        finished(path, *result);
+    });
+    thread->start();
+}
+
+QString SyncManager::summarize(const SyncResult &r)
+{
+    QStringList parts;
+    if (r.uploaded) {
+        parts << i18np("1 file sent", "%1 files sent", r.uploaded);
+    }
+    if (r.downloaded) {
+        parts << i18np("1 file received", "%1 files received", r.downloaded);
+    }
+    if (r.deletedLocal + r.deletedRemote) {
+        parts << i18np("1 deletion", "%1 deletions", r.deletedLocal + r.deletedRemote);
+    }
+    if (r.conflicts) {
+        parts << i18np("1 conflict (both versions kept)", "%1 conflicts (both versions kept)", r.conflicts);
+    }
+    if (parts.isEmpty()) {
+        return r.ok() ? i18n("Everything up to date") : i18n("Sync failed");
+    }
+    return parts.join(u", "_s);
+}
+
+void SyncManager::finished(const QString &notebookPath, const SyncResult &result)
+{
+    const QString summary = summarize(result);
+
+    QJsonObject json = readConfig(notebookPath);
+    json[u"lastSync"_s] = QDateTime::currentDateTime().toString(Qt::ISODate);
+    json[u"lastOk"_s] = result.ok();
+    json[u"lastSummary"_s] = summary;
+    json[u"lastErrors"_s] = QJsonArray::fromStringList(result.errors.mid(0, 20));
+    writeConfig(notebookPath, json);
+
+    if (!result.changedLocalPaths.isEmpty()) {
+        QList<QUrl> urls;
+        QStringList paths;
+        for (const QString &relative : result.changedLocalPaths) {
+            const QString absolute = notebookPath + u'/' + relative;
+            urls << QUrl::fromLocalFile(absolute);
+            paths << absolute;
+        }
+        Q_EMIT filesChanged(urls, paths);
+    }
+
+    m_running.clear();
+    m_progress.clear();
+    Q_EMIT runningChanged();
+    Q_EMIT progressChanged();
+    Q_EMIT syncFinished(notebookPath, result.ok(), summary, result.errors);
+    startNext();
+}
+
+} // namespace Sync

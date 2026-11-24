@@ -24,6 +24,7 @@ target_include_directories(marknote_static PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/commands
     ${CMAKE_CURRENT_SOURCE_DIR}/mdinlineparser
     ${CMAKE_CURRENT_SOURCE_DIR}/mermaid
+    ${CMAKE_CURRENT_SOURCE_DIR}/sync
 )
 
 set_source_files_properties(qml/EditorActions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -44,6 +45,7 @@ ecm_add_qml_module(marknote_static
         qml/IconPickerDialog.qml
         qml/TagEditorDialog.qml
         qml/NoteMetaStrip.qml
+        qml/NotebookSyncDialog.qml
         qml/NoteInlineStatusBar.qml
         qml/NoteLinkDialog.qml
         qml/NoteMetadataDialog.qml
@@ -119,6 +121,9 @@ ecm_add_qml_module(marknote_static
         sync/syncengine.h sync/syncengine.cpp
         sync/localfolderbackend.h sync/localfolderbackend.cpp
         sync/googledrivebackend.h sync/googledrivebackend.cpp
+        sync/tokenstore.h sync/tokenstore.cpp
+        sync/googleauth.h sync/googleauth.cpp
+        sync/syncmanager.h sync/syncmanager.cpp
         mdoptions/mdoptions.h
         mdtreemodel/treeitem.h mdtreemodel/treeitem.cpp
         mdtreemodel/mdtreemodel.h mdtreemodel/mdtreemodel.cpp
@@ -227,6 +232,21 @@ if (WITH_KRUNNER)
             KF6::WindowSystem
     )
     target_compile_definitions(marknote_static PUBLIC HAVE_KRUNNER)
+endif()
+
+if (TARGET KF6::Wallet)
+    target_link_libraries(marknote_static PUBLIC KF6::Wallet)
+    target_compile_definitions(marknote_static PUBLIC HAVE_KWALLET)
+endif()
+
+# Optional OAuth client baked in at build time (e.g. from a CI secret), so users
+# do not have to create their own Google Cloud project.
+set(MARKNOTE_GOOGLE_CLIENT_ID "" CACHE STRING "Google OAuth client ID for Drive sync")
+set(MARKNOTE_GOOGLE_CLIENT_SECRET "" CACHE STRING "Google OAuth client secret (installed-app clients are not confidential)")
+if (MARKNOTE_GOOGLE_CLIENT_ID)
+    set_property(SOURCE sync/syncmanager.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        MARKNOTE_GOOGLE_CLIENT_ID="${MARKNOTE_GOOGLE_CLIENT_ID}"
+        MARKNOTE_GOOGLE_CLIENT_SECRET="${MARKNOTE_GOOGLE_CLIENT_SECRET}")
 endif()
 
 if (TARGET md4c::md4c-html)

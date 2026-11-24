@@ -52,6 +52,17 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   `tags`); the editor never shows it and keeps it intact on save. Plain notes get one the
   first time they are edited. Folder icons go in Dolphin's `.directory` file.
 
+**Sync** (branch `feature/gdrive-sync`)
+- Each notebook syncs on its own, to **Google Drive** or to **another folder** (for example
+  one Nextcloud or Syncthing already syncs): right-click a notebook › *Sync Settings…*, then
+  *Sync Now* (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>, also in the *File* menu).
+- Changes go both ways. When a note was edited on two devices, both versions are kept
+  (`Note (conflict 2026-11-24 0915).md`). Deleted notes are moved to a trash folder
+  (`.marknote/trash`, or the Drive trash), never destroyed. An open note reloads when sync
+  brings in a newer version.
+- Google Drive access uses the `drive.file` scope: Marknote can only see files it created.
+  The sign-in is kept in KDE Wallet.
+
 <table>
 <tr>
 <td><img src="screenshots/fork/tag-filter.png" width="440" alt="Filtering by two tags with Any tag"><br><sub>Tag filter, <i>Any tag</i> mode</sub></td>
@@ -69,7 +80,32 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 <td><img src="screenshots/fork/slash-menu.png" width="440" alt="Grouped slash menu with Markdown hints"><br><sub>Slash menu</sub></td>
 <td><img src="screenshots/fork/view-menu.png" width="320" alt="View menu"> <img src="screenshots/fork/sidebar-menu.png" width="320" alt="Notebooks sidebar context menu"><br><sub>View menu and notebooks sidebar menu</sub></td>
 </tr>
+<tr>
+<td><img src="screenshots/fork/sync-dialog.png" width="400" alt="Notebook sync settings with Google Drive selected"><br><sub>Per-notebook sync settings</sub></td>
+<td><img src="screenshots/fork/sync-received.png" width="440" alt="An open note updated by sync, with a notification"><br><sub>An open note updated by sync</sub></td>
+</tr>
 </table>
+
+### Setting up Google Drive sync
+
+Google requires every app that signs in to have an OAuth client. Builds made with the
+repository secrets `MARKNOTE_GOOGLE_CLIENT_ID` and `MARKNOTE_GOOGLE_CLIENT_SECRET` include
+one; otherwise create your own (free, once):
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project and
+   enable the **Google Drive API** (*APIs & Services › Library*).
+2. *APIs & Services › OAuth consent screen*: user type **External**, fill in the app name
+   and your e-mail. Add the scope `…/auth/drive.file`. Then set the publishing status to
+   **In production**: while it is in *Testing*, Google expires the sign-in after 7 days.
+   (`drive.file` is a non-sensitive scope, so no Google review is needed; the consent page
+   says the app is unverified until you verify it.)
+3. *Credentials › Create credentials › OAuth client ID*, type **Desktop app**. Copy the
+   client ID and secret.
+4. Either paste them into Marknote (*Sync Settings…* › *Google Drive*), or add them as the
+   two repository secrets above so CI builds have them built in.
+
+Then choose *Sign in with Google…*. The browser opens Google's consent page and returns
+to Marknote on its own (it listens on `127.0.0.1` for the reply).
 
 ### Installing this fork
 
@@ -85,7 +121,7 @@ flatpak run org.kde.marknote
 Back up your notes folder first (default `~/Documents/Notes`): editing a note adds the
 front matter described above.
 
-Planned work (math rendering, encryption, sync, Android) is tracked in [TODO.md](TODO.md).
+Planned work (math rendering, encryption, Google Cloud Storage, Android) is tracked in [TODO.md](TODO.md).
 
 ---
 

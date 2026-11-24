@@ -32,6 +32,29 @@ Controls.Menu {
     }
 
     Controls.MenuItem {
+        text: KI18n.i18nc("@action:inmenu", "Sync Settings…")
+        icon.name: "folder-sync"
+        onTriggered: {
+            const syncComponent = Qt.createComponent("org.kde.marknote", "NotebookSyncDialog");
+            const syncDialog = syncComponent.createObject(root, {
+                notebookPath: root.path,
+                notebookName: root.name,
+            }) as NotebookSyncDialog;
+            syncDialog.open();
+        }
+    }
+
+    Controls.MenuItem {
+        readonly property string destination: root.path.length > 0 && root.visible ? SyncManager.settings(root.path).destination : "none"
+        visible: destination !== "none"
+        height: visible ? implicitHeight : 0
+        enabled: SyncManager.runningNotebook.length === 0
+        text: KI18n.i18nc("@action:inmenu", "Sync Now")
+        icon.name: "view-refresh"
+        onTriggered: SyncManager.syncNow(root.path)
+    }
+
+    Controls.MenuItem {
         text: KI18n.i18nc("@action:inmenu", "New Notebook…")
         icon.name: "list-add"
         onTriggered: App.action('add_notebook').trigger()

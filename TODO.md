@@ -18,6 +18,14 @@ Fork-only work. Nothing here is pushed to upstream KDE.
       separate band and note content is clipped below it.
       Design mockup: https://claude.ai/artifact/DJxD2S5s7TPaFCHZj5Lp7L
 
+- [x] **Sync** (`feature/gdrive-sync`) — per-notebook sync engine (three-way
+      compare against the last synced state, conflict copies, recoverable
+      deletes, device-local `.directory` keys kept out), destinations Google Drive
+      (`drive.file`, OAuth loopback + PKCE, token in KDE Wallet) and another
+      local folder; sync dialog, File › Sync Notebook Now (Ctrl+Alt+S), open
+      notes reload after sync. Tests run against a fake Drive and fake OAuth
+      server.
+
 ## Known gaps / follow-ups
 
 - [ ] Slash menu: Image and Link-to-note entries (mockup) are not added yet.
@@ -55,16 +63,18 @@ Fork-only work. Nothing here is pushed to upstream KDE.
 - [ ] Optional remember-password via KWallet (desktop) / Android Keystore with
       biometrics, plus an auto-lock timeout.
 
-### Storage: sync (do NOT build yet)
-- [ ] Per-notebook sync destinations: Google Drive (`drive.file` scope) and
-      Google Cloud Storage (bucket + prefix). Each destination syncs
-      independently against the local copy.
-- [ ] Sign in with Google (needs the user's own Google Cloud project for OAuth
-      client IDs).
-- [ ] Sync state database (last-synced hash + remote revision/generation),
-      conflict copies, deletion tombstones. Encrypted notebooks upload only
-      ciphertext.
-- [ ] Keep sync in its own module.
+### Storage: sync (next steps)
+- [ ] Google Cloud Storage destination (bucket + prefix) on the same
+      `RemoteBackend` interface; GCS md5 hashes fit the engine as-is.
+- [ ] Automatic sync: on start, every N minutes, and shortly after a note is
+      saved (currently manual only).
+- [ ] Drive: list only changes since the last sync (`changes.list` page token)
+      instead of the whole folder tree; resumable uploads for large files.
+- [ ] Renames are synced as delete + add (the old file goes to the trash).
+      Use the front matter `id` to detect moves.
+- [ ] Encrypted notebooks upload only ciphertext (after encryption lands).
+- [ ] Live-test against real Google Drive with a real OAuth client (so far only
+      the fake servers; the flow follows Google's documented installed-app flow).
 
 ### Android app
 - [ ] Same codebase (Kirigami is convergent; upstream CI already builds Android).
