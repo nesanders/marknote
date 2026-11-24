@@ -123,6 +123,8 @@ public:
     Q_INVOKABLE bool exportToOdt(const QUrl &path, const QUrl &destination);
 
     Q_INVOKABLE bool noteExists(const QString &noteName) const;
+    /// Whether a note (or folder) named @p name exists in @p parentFolder (notebook root when empty).
+    Q_INVOKABLE bool existsIn(const QUrl &parentFolder, const QString &name, bool isFolder) const;
 
     QString path() const;
 

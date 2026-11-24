@@ -2,12 +2,26 @@
 
 Fork-only work. Nothing here is pushed to upstream KDE.
 
-## In progress
+## Done
 
-- [ ] **UI overhaul** (`feature/ui-overhaul`) — standard menu bar, Dolphin-style
-      folder tree, always-visible filter bar, created dates, note/folder icons and
-      emoji, tags with All/Any filtering, extended slash menu.
+- [x] **UI overhaul** (`feature/ui-overhaul`) — standard menu bar (File, Edit,
+      View, Insert, Note, Settings, Help; Ctrl+M), Dolphin-style folder tree with
+      folder context menu / rename / new note or subfolder here / drag and drop
+      (onto folders, onto notes, onto empty space), created date and tags in the
+      tree, always-visible filter bar (name or `tag:name`, tag chips, All/Any),
+      sidebar tag list, note/folder icons and emoji, tag editor, metadata strip
+      above the editor, grouped slash menu with Markdown hints.
       Design mockup: https://claude.ai/artifact/DJxD2S5s7TPaFCHZj5Lp7L
+
+## Known gaps / follow-ups
+
+- [ ] Slash menu: Image and Link-to-note entries (mockup) are not added yet.
+- [ ] Edit menu items (Cut/Copy/Paste/Undo) show no shortcut hints: the editor
+      already owns those keys and Qt Quick ignores ambiguous duplicates.
+- [ ] Renaming a folder that contains the open note leaves the editor on the
+      old path until the note is reopened (pre-existing upstream behaviour;
+      moving such a folder by drag and drop is handled).
+- [ ] In a narrow notes pane, tags beyond what fits are clipped (2 chips + "+n").
 
 ## Later
 

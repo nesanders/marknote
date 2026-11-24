@@ -27,6 +27,7 @@ target_include_directories(marknote_static PRIVATE
 )
 
 set_source_files_properties(qml/EditorActions.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/FilterState.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 ecm_add_qml_module(marknote_static
     URI org.kde.marknote
@@ -35,6 +36,14 @@ ecm_add_qml_module(marknote_static
         qml/Main.qml
         qml/MainEditor.qml
         qml/NotesPage.qml
+        qml/AppActions.qml
+        qml/AppActionItem.qml
+        qml/AppMenuBar.qml
+        qml/FilterState.qml
+        qml/TagChip.qml
+        qml/IconPickerDialog.qml
+        qml/TagEditorDialog.qml
+        qml/NoteMetaStrip.qml
         qml/NoteInlineStatusBar.qml
         qml/NoteLinkDialog.qml
         qml/NoteMetadataDialog.qml

@@ -599,6 +599,24 @@ EditPage {
 
         slashPopup.close();
 
+        root.insertBlockBelow(currentBlock, item.type);
+
+        if (wasEmpty) {
+            CommandManager.removeBlocks([currentBlock]);
+        }
+    }
+
+    /// Insert a block of @p type (a slash menu type) below the focused block.
+    /// Used by the Insert menu in the menu bar.
+    function insertBlockFromMenu(type: string): void {
+        const currentBlock = CommandManager.model ? CommandManager.model.focusedBlock() : null;
+        if (!currentBlock) {
+            return;
+        }
+        root.insertBlockBelow(currentBlock, type);
+    }
+
+    function insertBlockBelow(currentBlock, type: string): void {
         CommandManager.insertParagraphBelow(currentBlock, "");
 
         let newBlock = CommandManager.model ? CommandManager.model.focusedBlock() : null;
@@ -608,7 +626,7 @@ EditPage {
 
         let model = richdochandler.treeModel;
 
-        switch (item.type) {
+        switch (type) {
         case "paragraph":
             break;
         case "heading1":
@@ -660,10 +678,6 @@ EditPage {
         case "table":
             CommandManager.parseBlock(newBlock, "|  |  |  |\n| --- | --- | --- |\n|  |  |  |");
             break;
-        }
-
-        if (wasEmpty) {
-            CommandManager.removeBlocks([currentBlock]);
         }
     }
 

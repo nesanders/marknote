@@ -605,6 +605,19 @@ bool NotesModel::noteExists(const QString &noteName) const
     return QFile::exists(m_path + u'/' + fileName);
 }
 
+bool NotesModel::existsIn(const QUrl &parentFolder, const QString &name, bool isFolder) const
+{
+    const QString parent = parentFolder.isEmpty() ? m_path : parentFolder.toLocalFile();
+    if (parent.isEmpty() || name.isEmpty()) {
+        return false;
+    }
+    QString fileName = name;
+    if (!isFolder && !fileName.endsWith(u".md"_s)) {
+        fileName += u".md"_s;
+    }
+    return QFileInfo::exists(parent + u'/' + fileName);
+}
+
 int NotesModel::totalNotesCount() const
 {
     return m_totalNotesCount;

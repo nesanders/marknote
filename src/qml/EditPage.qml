@@ -699,6 +699,11 @@ Kirigami.Page {
 
     contentItem: ColumnLayout {
         spacing: 0
+        NoteMetaStrip {
+            Layout.fillWidth: true
+            visible: !NavigationController.sourceMode && root.document && root.document.fileUrl.toString().length > 0
+            noteUrl: root.document ? root.document.fileUrl : ""
+        }
         Loader {
             id: contentLoader
             Layout.fillWidth: true
