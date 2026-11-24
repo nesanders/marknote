@@ -128,7 +128,10 @@ int main(int argc, char *argv[])
 #endif
 
     KLocalizedString::setApplicationDomain("marknote");
-    QGuiApplication::setWindowIcon(QIcon::fromTheme(u"org.kde.marknote"_s));
+    // Under Flatpak the desktop file and icon carry the Flatpak app id (this
+    // fork ships as io.github.nesanders.marknote), so the window must too.
+    const QString appId = qEnvironmentVariable("FLATPAK_ID", u"org.kde.marknote"_s);
+    QGuiApplication::setWindowIcon(QIcon::fromTheme(appId));
 
     KAboutData about(u"marknote"_s,
                      i18nc("Application name", "Marknote"),
@@ -148,6 +151,7 @@ int main(int argc, char *argv[])
 
     about.addComponent(u"Pele"_s, i18n("Diagram rendering library"), u"1.13.0"_s, u"https://github.com/obsidianmd/pele"_s, KAboutLicense::MIT);
 
+    about.setDesktopFileName(appId);
     KAboutData::setApplicationData(about);
 
 #ifdef HAVE_KCRASH

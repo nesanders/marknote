@@ -6,10 +6,16 @@ on:
     paths: ['web/**', '.github/workflows/web-pages.yml']
   pull_request:
     paths: ['web/**']
+  # A new desktop build: publish its Flatpak repository (under /flatpak/).
+  workflow_run:
+    workflows: ['Build Flatpak']
+    types: [completed]
+    branches: [master]
   workflow_dispatch: {}
 
 permissions:
   contents: read
+  actions: read # to fetch the Flatpak repository built by "Build Flatpak"
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -17,12 +23,15 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -36,6 +45,24 @@ jobs:
         run: |
           if grep -rEn '[0-9]+-[a-z0-9]{20,}\.apps\.googleusercontent\.com|GOCSPX-|ya29\.' dist; then
             echo "OAuth client or token found in the build"; exit 1
+          fi
+      # The signed Flatpak repository of the newest successful master build.
+      - name: Add the Flatpak repository
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list -R "$GITHUB_REPOSITORY" --workflow build-flatpak.yml --branch master \
+              --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          fi
+          mkdir -p ../flatpak-site
+          if [ -n "$RUN_ID" ] && gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n marknote-flatpak-repo -D ../flatpak-site; then
+            cp -r ../flatpak-site/flatpak dist/flatpak
+            du -sh dist/flatpak
+          else
+            echo "::warning::No signed Flatpak repository found (build $RUN_ID): publishing the web app only."
           fi
       - uses: actions/upload-pages-artifact@v3
         with:
