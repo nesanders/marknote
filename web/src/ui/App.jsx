@@ -14,7 +14,7 @@ import { NoteView } from './NoteView.jsx';
 import { Tree } from './Tree.jsx';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
-const README = 'https://github.com/nesanders/marknote/blob/feature/pwa/web/README.md';
+const README = 'https://github.com/nesanders/marknote/blob/master/web/README.md';
 
 function useWide() {
     const query = '(min-width: 900px)';

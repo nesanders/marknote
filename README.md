@@ -52,7 +52,7 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   `tags`); the editor never shows it and keeps it intact on save. Plain notes get one the
   first time they are edited. Folder icons go in Dolphin's `.directory` file.
 
-**Sync** (branch `feature/gdrive-sync`)
+**Sync**
 - Each notebook syncs on its own, to **Google Drive** or to **another folder** (for example
   one Nextcloud or Syncthing already syncs): right-click a notebook › *Sync Settings…*, then
   *Sync Now* (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>, also in the *File* menu).
@@ -86,7 +86,7 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 </tr>
 </table>
 
-**Web app for phones** (branch `feature/pwa`, folder [`web/`](web/README.md))
+**Web app for phones** (folder [`web/`](web/README.md))
 - An installable web app (PWA) for Android and iPhone that opens the same notebooks from
   Google Drive: tree with drag and drop, tags, filter, icons, notes with math, Mermaid
   diagrams and images, a live-preview Markdown editor with a `/` menu, photo upload,

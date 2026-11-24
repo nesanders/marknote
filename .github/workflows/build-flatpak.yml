@@ -3,6 +3,7 @@ name: Build Flatpak
 on:
   push:
     branches:
+      - master
       - ci/flatpak-build
       - ci/flatpak-master
       - 'feature/**'
