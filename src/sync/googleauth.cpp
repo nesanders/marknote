@@ -139,6 +139,7 @@ void GoogleAuth::restore()
             }
             Q_EMIT signedInChanged();
         }
+        Q_EMIT tokenStorageChanged();
         Q_EMIT restored();
     });
 }
@@ -236,6 +237,7 @@ void GoogleAuth::finishSignIn(const QString &accessToken, const QString &refresh
     fetchAccount();
     if (m_store) {
         m_store->save(QString::fromLatin1(TokenStoreKey), refreshToken, [this](bool ok, const QString &error) {
+            Q_EMIT tokenStorageChanged();
             if (!ok) {
                 setError(i18n("Signed in, but the sign-in could not be saved (%1). You will need to sign in again next time.", error));
             }

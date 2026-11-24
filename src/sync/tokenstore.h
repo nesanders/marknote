@@ -4,9 +4,11 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace Sync
 {
@@ -32,6 +34,28 @@ public:
 
     /// KDE Wallet when available, otherwise a private (0600) file in the app data dir.
     static std::unique_ptr<TokenStore> createDefault();
+};
+
+/**
+ * Tries stores in order: a store that fails (cannot be opened or written) is
+ * skipped and the next one is used. Loading also looks in later stores, so a
+ * sign-in saved by a fallback is found again. description() names the store
+ * in use.
+ */
+class ChainTokenStore : public TokenStore
+{
+public:
+    explicit ChainTokenStore(std::vector<std::unique_ptr<TokenStore>> stores);
+    QString description() const override;
+    void load(const QString &key, LoadCallback done) override;
+    void save(const QString &key, const QString &secret, SaveCallback done) override;
+    void remove(const QString &key) override;
+
+private:
+    void loadFrom(size_t index, const QString &key, LoadCallback done, QStringList errors);
+    void saveTo(size_t index, const QString &key, const QString &secret, SaveCallback done, QStringList errors);
+    std::vector<std::unique_ptr<TokenStore>> m_stores;
+    size_t m_active = 0;
 };
 
 /// Plain file store: one file per key, readable only by the user.
