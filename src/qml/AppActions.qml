@@ -199,6 +199,43 @@ QtObject {
         onTriggered: root.setSort("sort-created")
     }
 
+    function setDensity(level: int): void {
+        Config.treeDensity = level;
+        Config.save();
+    }
+
+    property Kirigami.Action densityCompact: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu notes list density", "Compact")
+        icon.name: "view-list-details"
+        checkable: true
+        checked: Config.treeDensity === 0
+        onTriggered: root.setDensity(0)
+    }
+
+    property Kirigami.Action densityNormal: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu notes list density", "Normal")
+        icon.name: "view-list-text"
+        checkable: true
+        checked: Config.treeDensity === 1
+        onTriggered: root.setDensity(1)
+    }
+
+    property Kirigami.Action densityComfortable: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu notes list density", "Comfortable")
+        icon.name: "view-list-icons"
+        checkable: true
+        checked: Config.treeDensity === 2
+        onTriggered: root.setDensity(2)
+    }
+
+    property Kirigami.Action searchContents: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Filter Searches Note Text")
+        icon.name: "document-preview"
+        checkable: true
+        checked: Config.filterSearchContents
+        onTriggered: FilterState.setSearchContents(!Config.filterSearchContents)
+    }
+
     property Kirigami.Action expandAll: Kirigami.Action {
         text: KI18n.i18nc("@action:inmenu", "Expand All Folders")
         icon.name: "expand-all"

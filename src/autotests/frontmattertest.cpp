@@ -166,6 +166,24 @@ private Q_SLOTS:
         QVERIFY(FrontMatter::split(QString::fromUtf8(readFile(path))).body.startsWith(u"# Old note"_s));
     }
 
+    void testNoteContainsSearchesBodyOnly()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(u"note.md"_s);
+        writeFile(path, "---\nid: X\ntags: [secretword]\n---\n\n# Title\n\nThe Quick brown fox\n");
+        auto *meta = NoteMetadata::instance();
+        QVERIFY(meta->noteContains(path, u"quick BROWN"_s));
+        QVERIFY(meta->noteContains(QUrl::fromLocalFile(path).toString(), u"fox"_s));
+        QVERIFY(!meta->noteContains(path, u"secretword"_s)); // front matter is not content
+        QVERIFY(!meta->noteContains(path, u"zebra"_s));
+
+        // The cache follows edits to the file.
+        QTest::qWait(1100); // make sure the modification time changes
+        writeFile(path, "---\nid: X\n---\n\nNow about zebras\n");
+        QVERIFY(meta->noteContains(path, u"zebra"_s));
+        QVERIFY(!meta->noteContains(path, u"fox"_s));
+    }
+
     void testFolderIconsUseDotDirectory()
     {
         QTemporaryDir dir;

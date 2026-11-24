@@ -32,6 +32,14 @@ Controls.Menu {
     }
 
     Controls.MenuItem {
+        text: KI18n.i18nc("@action:inmenu", "New Notebook…")
+        icon.name: "list-add"
+        onTriggered: App.action('add_notebook').trigger()
+    }
+
+    Controls.MenuSeparator {}
+
+    Controls.MenuItem {
         text: KI18n.i18nc("@action:inmenu", "Delete Notebook")
         icon.name: "delete"
         onTriggered: {

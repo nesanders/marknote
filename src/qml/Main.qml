@@ -623,10 +623,57 @@ StatetfulApp.StatefulWindow {
                         }
                     }
 
+                    id: notebookList
                     clip: true
                     model: noteBooksModel
                     delegate: NotebookDelegate {
                         model: noteBooksModel
+                    }
+
+                    // Right-click on empty sidebar space; notebooks have their own menu.
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: (eventPoint) => {
+                            const p = eventPoint.position;
+                            if (notebookList.indexAt(p.x + notebookList.contentX, p.y + notebookList.contentY) === -1) {
+                                sidebarMenu.popup();
+                            }
+                        }
+                    }
+                    TapHandler {
+                        acceptedDevices: PointerDevice.TouchScreen
+                        onLongPressed: {
+                            const p = point.position;
+                            if (notebookList.indexAt(p.x + notebookList.contentX, p.y + notebookList.contentY) === -1) {
+                                sidebarMenu.popup();
+                            }
+                        }
+                    }
+
+                    Controls.Menu {
+                        id: sidebarMenu
+
+                        Controls.MenuItem {
+                            text: i18nc("@action:inmenu", "New Notebook…")
+                            icon.name: "list-add"
+                            onTriggered: App.action('add_notebook').trigger()
+                        }
+                        Controls.Menu {
+                            title: i18nc("@title:menu", "Import")
+                            icon.name: "document-import"
+                            Controls.MenuItem {
+                                text: i18nc("@action:inmenu", "Import from KNotes")
+                                icon.name: "knotes-symbolic"
+                                onTriggered: App.action('import_knotes').trigger()
+                            }
+                            Controls.MenuItem {
+                                text: i18nc("@action:inmenu", "Import from Maildir")
+                                icon.name: "folder-mail"
+                                onTriggered: App.action('import_maildir').trigger()
+                            }
+                        }
+                        Controls.MenuSeparator {}
+                        Controls.MenuItem { action: root.appActions.showSidebar }
                     }
                 }
             }

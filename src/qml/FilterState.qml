@@ -4,6 +4,7 @@
 pragma Singleton
 
 import QtQuick
+import org.kde.marknote
 import org.kde.marknote.settings
 
 /**
@@ -19,6 +20,7 @@ QtObject {
     property string text: ""
     property var tags: []
     readonly property bool matchAny: Config.tagFilterMatchAny
+    readonly property bool searchContents: Config.filterSearchContents
     readonly property bool active: text.trim().length > 0 || tags.length > 0
 
     /// Bumped on every change so filter proxies know to re-run.
@@ -27,6 +29,7 @@ QtObject {
     onTextChanged: revision++
     onTagsChanged: revision++
     onMatchAnyChanged: revision++
+    onSearchContentsChanged: revision++
 
     signal focusRequested()
 
@@ -45,6 +48,11 @@ QtObject {
         tags = next;
     }
 
+    function setSearchContents(on: bool): void {
+        Config.filterSearchContents = on;
+        Config.save();
+    }
+
     function setMatchAny(any: bool): void {
         Config.tagFilterMatchAny = any;
         Config.save();
@@ -55,8 +63,9 @@ QtObject {
         tags = [];
     }
 
-    /// Whether a note with @p name and @p noteTags passes the filter.
-    function acceptsNote(name: string, noteTags: var): bool {
+    /// Whether a note with @p name and @p noteTags (at @p path) passes the filter.
+    /// With searchContents, plain text also matches the note's body.
+    function acceptsNote(name: string, noteTags: var, path: string): bool {
         const list = noteTags ? Array.from(noteTags) : [];
         let q = text.trim().toLowerCase();
         if (q.length > 0) {
@@ -66,7 +75,8 @@ QtObject {
                     return false;
                 }
             } else if (name.toLowerCase().indexOf(q) === -1
-                       && !list.some(t => t.toLowerCase() === q)) {
+                       && !list.some(t => t.toLowerCase() === q)
+                       && !(searchContents && path && NoteMetadata.noteContains(path, q))) {
                 return false;
             }
         }

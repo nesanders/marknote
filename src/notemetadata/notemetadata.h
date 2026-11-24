@@ -54,6 +54,9 @@ public:
     QString folderIconForPath(const QString &folderPath) const;
     Q_INVOKABLE bool setFolderIcon(const QUrl &folder, const QString &icon);
 
+    /// Whether the note's body (front matter excluded) contains @p text, case-insensitively.
+    Q_INVOKABLE bool noteContains(const QString &filePath, const QString &text) const;
+
     /// Every tag used in a notebook: [{name, count}], sorted by name.
     Q_INVOKABLE QVariantList tagsInNotebook(const QString &notebookPath) const;
 
@@ -81,5 +84,12 @@ private:
         FrontMatter::Meta meta;
     };
     mutable QHash<QString, CacheEntry> m_cache;
+
+    struct BodyEntry {
+        QDateTime modified;
+        qint64 size = -1;
+        QString lowerBody;
+    };
+    mutable QHash<QString, BodyEntry> m_bodyCache;
     int m_revision = 0;
 };

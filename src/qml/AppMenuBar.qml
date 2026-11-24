@@ -104,6 +104,7 @@ Controls.MenuBar {
         Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.findInNote }
         Controls.MenuItem { action: root.actions.findNotes }
+        Controls.MenuItem { action: root.actions.searchContents }
     }
 
     Controls.Menu {
@@ -114,6 +115,13 @@ Controls.MenuBar {
         Controls.MenuSeparator {}
         Controls.MenuItem { action: root.actions.showTags }
         Controls.MenuItem { action: root.actions.showCreated }
+        Controls.Menu {
+            title: KI18n.i18nc("@title:menu", "Density")
+            icon.name: "view-list-details"
+            Controls.MenuItem { action: root.actions.densityCompact }
+            Controls.MenuItem { action: root.actions.densityNormal }
+            Controls.MenuItem { action: root.actions.densityComfortable }
+        }
         Controls.Menu {
             title: KI18n.i18nc("@title:menu", "Sort Notes")
             icon.name: "view-sort"

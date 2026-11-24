@@ -66,7 +66,8 @@ Kirigami.Dialog {
         }
     }
 
-    contentItem: ColumnLayout {
+    // Default content (not contentItem) so Kirigami.Dialog applies preferredWidth.
+    ColumnLayout {
         spacing: Kirigami.Units.largeSpacing
 
         Flow {

@@ -63,10 +63,9 @@ Kirigami.Dialog {
         "code-context", "applications-science", "office-chart-bar", "mail-message", "user-home", "lock", "games-highscores",
         "media-playback-start", "camera-photo", "globe"]
 
-    contentItem: ColumnLayout {
+    // Default content (not contentItem) so Kirigami.Dialog applies preferredWidth.
+    ColumnLayout {
         spacing: 0
-        implicitWidth: Kirigami.Units.gridUnit * 22
-        implicitHeight: Kirigami.Units.gridUnit * 22
 
         Controls.TabBar {
             id: tabs

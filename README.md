@@ -2,6 +2,91 @@
 
 Write down your thoughts.
 
+> [!NOTE]
+> **This is a personal fork** of [KDE's Marknote](https://invent.kde.org/office/marknote)
+> with a Dolphin-style interface overhaul. It is not affiliated with or submitted to KDE.
+> The "[About this fork](#about-this-fork)" section describes fork-only changes; the rest of
+> this README is upstream's.
+
+## About this fork
+
+Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
+[Mermaid diagram rendering (KDE MR !299)](https://invent.kde.org/office/marknote/-/merge_requests/299).
+
+<img src="screenshots/fork/main-window.png" width="900" alt="Main window: menu bar, notebooks and tags sidebar, folder tree with icons, tags and created dates, editor with metadata strip">
+
+### Changes in this fork
+
+**Window and navigation**
+- Standard in-window KDE **menu bar** (File, Edit, View, Insert, Note, Settings, Help),
+  toggled with *Settings › Show Menubar* (<kbd>Ctrl</kbd>+<kbd>M</kbd>).
+- Right-click on the **notebooks sidebar** for *New Notebook…*, import, and sidebar options.
+- The sidebar lists the current notebook's **tags** with note counts; click one to filter.
+
+**Folder tree (Dolphin-style)**
+- Nested folders with a **folder context menu**: *New Note Here*, *New Subfolder*,
+  *Rename* (also <kbd>F2</kbd>, in place), *Set Icon*, *Expand/Collapse*, *Delete*.
+- **Drag and drop**: onto a folder to move a note in, onto a note to move next to it,
+  onto empty space to move it to the top of the notebook.
+- Each row shows the note's **icon or emoji**, its **tags** and its **created date**
+  (visible by default; *View › Show Tags / Show Created Date*).
+- *View › Density*: **Compact**, **Normal** or **Comfortable** rows.
+- *View › Sort Notes › By Created Date*.
+
+**Filter bar**
+- Always visible under the notes list (<kbd>Ctrl</kbd>+<kbd>E</kbd> to focus).
+- Filters by name, `tag:name`, or — with **Contents** on — the text inside notes.
+- Selected tags show as chips, with an **All tags / Any tag** switch.
+
+**Notes**
+- **Icon or emoji** for any note or folder (emoji search, theme icons, full KDE icon browser).
+- **Tags** on any note, with an autocompleting tag editor (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>).
+- A strip above the editor shows the note's icon, created date and tags.
+- **Slash menu** (type `/`) grouped into Text / Lists / Blocks, showing each block's
+  Markdown shortcut; the *Insert* menu inserts the same blocks.
+
+**Storage**
+- Note metadata lives in Obsidian-compatible YAML front matter (`id`, `created`, `icon`,
+  `tags`); the editor never shows it and keeps it intact on save. Plain notes get one the
+  first time they are edited. Folder icons go in Dolphin's `.directory` file.
+
+<table>
+<tr>
+<td><img src="screenshots/fork/tag-filter.png" width="440" alt="Filtering by two tags with Any tag"><br><sub>Tag filter, <i>Any tag</i> mode</sub></td>
+<td><img src="screenshots/fork/content-search.png" width="440" alt="Filter with Contents searching inside notes"><br><sub>Searching inside notes (<i>Contents</i>)</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/fork/folder-menu.png" width="440" alt="Folder context menu"><br><sub>Folder context menu</sub></td>
+<td><img src="screenshots/fork/density.png" width="440" alt="Compact, normal and comfortable density side by side"><br><sub>Density: compact, normal, comfortable</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/fork/icon-picker.png" width="300" alt="Emoji picker"> <img src="screenshots/fork/icon-picker-icons.png" width="300" alt="Icon picker"><br><sub>Icon or emoji for notes and folders</sub></td>
+<td><img src="screenshots/fork/tag-editor.png" width="380" alt="Tag editor with autocomplete"><br><sub>Tag editor</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/fork/slash-menu.png" width="440" alt="Grouped slash menu with Markdown hints"><br><sub>Slash menu</sub></td>
+<td><img src="screenshots/fork/view-menu.png" width="320" alt="View menu"> <img src="screenshots/fork/sidebar-menu.png" width="320" alt="Notebooks sidebar context menu"><br><sub>View menu and notebooks sidebar menu</sub></td>
+</tr>
+</table>
+
+### Installing this fork
+
+Builds come from GitHub Actions (*Actions › Build Flatpak* › a successful run › **Artifacts**).
+Download `marknote-flatpak`, unzip it, then:
+
+```sh
+flatpak install --user flathub org.kde.Platform//6.11
+flatpak install --user --reinstall marknote.flatpak
+flatpak run org.kde.marknote
+```
+
+Back up your notes folder first (default `~/Documents/Notes`): editing a note adds the
+front matter described above.
+
+Planned work (math rendering, encryption, sync, Android) is tracked in [TODO.md](TODO.md).
+
+---
+
 Marknote supports a wide range of formatting options useful for taking everyday notes, like bold, italic, underlined and strike through fonts as well as headings, lists, check boxes, images and more.
 
 <img src="screenshots/desktop.png"  height="350" > <img src="screenshots/mobile.png"  height="350" >

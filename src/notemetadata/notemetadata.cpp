@@ -208,6 +208,36 @@ bool NoteMetadata::setFolderIcon(const QUrl &folder, const QString &icon)
     return ok;
 }
 
+bool NoteMetadata::noteContains(const QString &filePath, const QString &text) const
+{
+    const QString needle = text.trimmed().toLower();
+    if (needle.isEmpty()) {
+        return true;
+    }
+    QString path = filePath;
+    if (path.startsWith(u"file://"_s)) {
+        path = QUrl(path).toLocalFile();
+    }
+    const QFileInfo info(path);
+    if (!info.isFile()) {
+        return false;
+    }
+    auto it = m_bodyCache.constFind(path);
+    if (it == m_bodyCache.constEnd() || it->modified != info.lastModified() || it->size != info.size()) {
+        QFile file(path);
+        if (!file.open(QFile::ReadOnly)) {
+            return false;
+        }
+        BodyEntry entry;
+        entry.modified = info.lastModified();
+        entry.size = info.size();
+        // Notes are small; cap at 4 MiB so a stray huge file cannot stall filtering.
+        entry.lowerBody = FrontMatter::split(QString::fromUtf8(file.read(4 * 1024 * 1024))).body.toLower();
+        it = m_bodyCache.insert(path, entry);
+    }
+    return it->lowerBody.contains(needle);
+}
+
 QVariantList NoteMetadata::tagsInNotebook(const QString &notebookPath) const
 {
     QString root = QUrl::fromUserInput(notebookPath).toLocalFile();

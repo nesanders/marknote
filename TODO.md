@@ -11,6 +11,9 @@ Fork-only work. Nothing here is pushed to upstream KDE.
       tree, always-visible filter bar (name or `tag:name`, tag chips, All/Any),
       sidebar tag list, note/folder icons and emoji, tag editor, metadata strip
       above the editor, grouped slash menu with Markdown hints.
+- [x] Filter bar "Contents" toggle (search inside notes), notebooks sidebar
+      context menu (New Notebook…), View › Density (compact/normal/comfortable),
+      README section with screenshots.
       Design mockup: https://claude.ai/artifact/DJxD2S5s7TPaFCHZj5Lp7L
 
 ## Known gaps / follow-ups

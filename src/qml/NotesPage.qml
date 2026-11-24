@@ -131,7 +131,9 @@ Kirigami.ScrollablePage {
                     id: filterField
                     Layout.fillWidth: true
                     focusSequences: []
-                    placeholderText: KI18n.i18nc("@info:placeholder", "Filter by name, or tag:name…")
+                    placeholderText: FilterState.searchContents
+                        ? KI18n.i18nc("@info:placeholder", "Filter by name or text, or tag:name…")
+                        : KI18n.i18nc("@info:placeholder", "Filter by name, or tag:name…")
                     onTextChanged: FilterState.text = text
                     Keys.onEscapePressed: (event) => {
                         if (text.length > 0) {
@@ -142,6 +144,19 @@ Kirigami.ScrollablePage {
                         event.accepted = true;
                     }
                     Keys.onDownPressed: notesList.forceActiveFocus()
+                }
+
+                ToolButton {
+                    id: contentsButton
+                    icon.name: "document-preview"
+                    text: KI18n.i18nc("@action:button search inside note text", "Contents")
+                    checkable: true
+                    checked: FilterState.searchContents
+                    display: root.width > Kirigami.Units.gridUnit * 16 ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                    onToggled: FilterState.setSearchContents(checked)
+                    ToolTip.visible: hovered
+                    ToolTip.text: checked ? KI18n.i18nc("@info:tooltip", "Searching note names and text") : KI18n.i18nc("@info:tooltip", "Also search inside notes")
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
                 }
 
                 ToolButton {
@@ -450,7 +465,7 @@ Kirigami.ScrollablePage {
             if (pageNotesModel.data(idx, NotesModel.IsFolder)) {
                 return FilterState.acceptsFolder(name);
             }
-            return FilterState.acceptsNote(name, pageNotesModel.data(idx, NotesModel.Tags));
+            return FilterState.acceptsNote(name, pageNotesModel.data(idx, NotesModel.Tags), pageNotesModel.data(idx, NotesModel.Path));
         }
         Component.onCompleted: filterModel.sort(0, filterModel.sortOrder)
     }
@@ -986,6 +1001,9 @@ Kirigami.ScrollablePage {
             readonly property string parentDir: normPath.substring(0, normPath.lastIndexOf("/"))
             // Dolphin-style single line with columns when the list is wide enough.
             readonly property bool wide: notesList.width > Kirigami.Units.gridUnit * 26
+            // View › Density: 0 compact (single line, tight), 1 normal, 2 comfortable.
+            readonly property int density: Config.treeDensity
+            readonly property bool compact: density === 0
             readonly property var tagList: tags ? Array.from(tags) : []
             readonly property bool showTags: Config.showTagsColumn && !isFolder && tagList.length > 0
             readonly property bool showCreated: Config.showCreatedColumn && createdText.length > 0
@@ -1143,10 +1161,10 @@ Kirigami.ScrollablePage {
 
                 // Note/folder icon: an emoji, a chosen theme icon, or the default.
                 Item {
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: Math.max(0, (renameField.implicitHeight - height) / 2)
+                    Layout.preferredWidth: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    Layout.preferredHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    Layout.alignment: delegateItem.compact ? Qt.AlignVCenter : Qt.AlignTop
+                    Layout.topMargin: delegateItem.compact ? 0 : Math.max(0, (renameField.implicitHeight - height) / 2)
 
                     Label {
                         anchors.centerIn: parent
@@ -1181,7 +1199,7 @@ Kirigami.ScrollablePage {
                         Label {
                             Layout.fillWidth: true
                             Layout.leftMargin: Kirigami.Units.smallSpacing
-                            Layout.preferredHeight: renameField.implicitHeight
+                            Layout.preferredHeight: delegateItem.compact ? -1 : renameField.implicitHeight
                             verticalAlignment: Text.AlignVCenter
 
                             text: delegateItem.name
@@ -1284,7 +1302,7 @@ Kirigami.ScrollablePage {
                     // Narrow layout: created date and tags on a fixed-height second line
                     // (never wraps, so row heights stay stable while filtering).
                     Row {
-                        visible: !delegateItem.wide && (delegateItem.showCreated || delegateItem.showTags)
+                        visible: !delegateItem.wide && !delegateItem.compact && (delegateItem.showCreated || delegateItem.showTags)
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.round(Kirigami.Units.gridUnit * 1.1)
                         Layout.leftMargin: Kirigami.Units.smallSpacing
@@ -1342,6 +1360,10 @@ Kirigami.ScrollablePage {
 
                     Layout.alignment: Qt.AlignHCenter
                     Layout.margins: 0
+                    // Keep compact rows tight: the hidden menu button must not set the row height.
+                    Layout.maximumHeight: delegateItem.compact ? Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing : -1
+                    icon.width: delegateItem.compact ? Kirigami.Units.iconSizes.small : Kirigami.Units.iconSizes.smallMedium
+                    icon.height: icon.width
 
                     Accessible.role: Accessible.ButtonMenu
                     Accessible.onPressAction: openMenu()
@@ -1380,8 +1402,19 @@ Kirigami.ScrollablePage {
             }
 
             highlighted: NavigationController.absoluteNotePath === delegateItem.normPath || delegateItem.isDropTarget
-            topPadding: delegateItem.wide ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing
-            bottomPadding: delegateItem.wide ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing
+            readonly property real rowPadding: compact ? 1
+                : density === 2 ? Kirigami.Units.largeSpacing
+                : (wide ? Kirigami.Units.smallSpacing : Kirigami.Units.mediumSpacing)
+            topPadding: rowPadding
+            bottomPadding: rowPadding
+            // RoundedItemDelegate enforces a 2-gridUnit minimum height; compact rows drop it.
+            implicitHeight: compact
+                ? implicitContentHeight + topPadding + bottomPadding + 2
+                : Math.max(implicitBackgroundHeight + topInset + bottomInset,
+                           implicitContentHeight + topPadding + bottomPadding,
+                           Kirigami.Units.gridUnit * 2)
+            topInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
+            bottomInset: compact ? 0 : Math.round(Kirigami.Units.smallSpacing / 2)
         }
 
         // Dropping on empty space moves the note to the top level of the notebook.

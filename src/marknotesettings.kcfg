@@ -34,6 +34,14 @@ SPDX-License-Identifier: LGPL-2.0-or-later
       <label>Show the created date in the notes list</label>
       <default>true</default>
     </entry>
+    <entry name="filterSearchContents" type="Bool">
+      <label>Filter also matches text inside notes</label>
+      <default>false</default>
+    </entry>
+    <entry name="treeDensity" type="Int">
+      <label>Notes list density: 0 compact, 1 normal, 2 comfortable</label>
+      <default>1</default>
+    </entry>
     <entry name="tagFilterMatchAny" type="Bool">
       <label>Tag filter matches notes with any selected tag instead of all</label>
       <default>false</default>
