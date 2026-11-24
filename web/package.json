@@ -22,6 +22,7 @@
     "codemirror": "^6.0.2",
     "dompurify": "^3.5.0",
     "katex": "^0.19.1",
+    "libsodium-wrappers-sumo": "^0.8.4",
     "markdown-it": "^15.0.3",
     "mermaid": "^12.3.0",
     "preact": "^11.2.0"

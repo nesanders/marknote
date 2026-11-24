@@ -118,6 +118,7 @@ ecm_add_qml_module(marknote_static
         notemetadata/frontmatter.h notemetadata/frontmatter.cpp
         notemetadata/notemetadata.h notemetadata/notemetadata.cpp
         notemetadata/imagelinks.h notemetadata/imagelinks.cpp
+        crypto/vaultcrypto.h crypto/vaultcrypto.cpp
         sync/remotebackend.h
         sync/syncengine.h sync/syncengine.cpp
         sync/localfolderbackend.h sync/localfolderbackend.cpp
@@ -239,6 +240,9 @@ if (TARGET Qt6::DBus AND NOT ANDROID)
     target_link_libraries(marknote_static PUBLIC Qt6::DBus)
     target_compile_definitions(marknote_static PUBLIC HAVE_QTDBUS)
 endif()
+
+# Encrypted notebooks (docs/encryption.md).
+target_link_libraries(marknote_static PUBLIC PkgConfig::SODIUM)
 
 if (TARGET PkgConfig::LIBSECRET)
     target_link_libraries(marknote_static PUBLIC PkgConfig::LIBSECRET)

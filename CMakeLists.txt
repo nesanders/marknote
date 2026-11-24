@@ -95,6 +95,10 @@ ecm_set_disabled_deprecation_versions(QT 6.9.0
 )
 
 find_package(md4qt COMPONENTS md4qt)
+
+# Encrypted notebooks use libsodium (Argon2id, XChaCha20-Poly1305).
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium>=1.0.18)
 set_package_properties(md4qt PROPERTIES
     TYPE REQUIRED
     URL "https://invent.kde.org/libraries/md4qt"
