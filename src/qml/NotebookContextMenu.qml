@@ -55,6 +55,12 @@ Controls.Menu {
     }
 
     Controls.MenuItem {
+        text: KI18n.i18nc("@action:inmenu", "Make Image Links Relative")
+        icon.name: "insert-image"
+        onTriggered: NoteMetadata.makeImageLinksRelative(root.path)
+    }
+
+    Controls.MenuItem {
         text: KI18n.i18nc("@action:inmenu", "New Notebook…")
         icon.name: "list-add"
         onTriggered: App.action('add_notebook').trigger()

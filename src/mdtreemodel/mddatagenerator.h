@@ -25,6 +25,8 @@ QVariantMap fromFootnote(const QSharedPointer<MD::Item> &item);
 QVariantMap fromTable(const QSharedPointer<MD::Item> &item, QSharedPointer<MD::Document> fullDoc);
 
 QString toHtml(const QSharedPointer<MD::Item> &item, QSharedPointer<MD::Document> fullDoc = {});
+/// Turn image sources relative to @p noteDir into absolute file URLs.
+QString resolveImageLinks(const QString &html, const QString &noteDir);
 QString toMd(const QSharedPointer<MD::Item> &item);
 }
 

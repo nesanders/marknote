@@ -72,7 +72,22 @@ public:
     /// Files were changed behind our back (e.g. by sync); re-read them.
     Q_INVOKABLE void filesChanged(const QStringList &paths);
 
+    /// Link text for an image the user inserts into a note: relative, after
+    /// copying the image next to the note if it is outside the notebook.
+    Q_INVOKABLE QString imageLink(const QUrl &note, const QUrl &image, const QString &notebookPath);
+
+    /// Rewrite absolute image links of a notebook as relative ones. Returns a summary.
+    Q_INVOKABLE QString makeImageLinksRelative(const QString &notebookPath);
+
+    /// Around rewriting note files on disk (moves, link conversion), so open
+    /// editors save first and reload after.
+    void beginRewrite();
+    void endRewrite(const QStringList &changedNotes);
+
 Q_SIGNALS:
+    void aboutToRewriteNotes();
+    void notesRewritten(const QList<QUrl> &notes);
+    void statusMessage(const QString &message);
     void revisionChanged();
     void metadataChanged(const QString &path);
 

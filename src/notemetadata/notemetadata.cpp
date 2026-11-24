@@ -3,9 +3,12 @@
 
 #include "notemetadata.h"
 
+#include "imagelinks.h"
+
 #include <KConfig>
 #include <KConfigGroup>
 #include <KFormat>
+#include <KLocalizedString>
 
 #include <QDirIterator>
 #include <QFile>
@@ -123,6 +126,71 @@ void NoteMetadata::bump(const QString &path)
     ++m_revision;
     Q_EMIT metadataChanged(path);
     Q_EMIT revisionChanged();
+}
+
+QString NoteMetadata::imageLink(const QUrl &note, const QUrl &image, const QString &notebookPath)
+{
+    const QString notePath = note.isLocalFile() ? note.toLocalFile() : note.toString();
+    const QString imagePath = image.isLocalFile() ? image.toLocalFile() : image.toString();
+    if (!image.isLocalFile() && !image.isRelative()) {
+        return image.toString(); // a web image stays a web link
+    }
+    const QString notebook = notebookPath.startsWith(u"file:"_s) ? QUrl(notebookPath).toLocalFile() : notebookPath;
+    QString error;
+    const QString link = ImageLinks::linkForNewImage(notePath, imagePath, notebook, &error);
+    if (link.isEmpty()) {
+        Q_EMIT statusMessage(error);
+    } else {
+        bump(notePath);
+    }
+    return link;
+}
+
+QString NoteMetadata::makeImageLinksRelative(const QString &notebookPath)
+{
+    const QString notebook = notebookPath.startsWith(u"file:"_s) ? QUrl(notebookPath).toLocalFile() : notebookPath;
+    beginRewrite();
+    const ImageLinks::Report r = ImageLinks::makeRelative(notebook);
+    endRewrite(r.changedNotes);
+    QString summary;
+    if (r.rewritten == 0 && r.missing == 0 && r.errors.isEmpty()) {
+        summary = i18n("All image links in this notebook are already relative.");
+    } else {
+        summary = i18np("Made 1 image link relative", "Made %1 image links relative", r.rewritten);
+        if (r.copied) {
+            summary += i18np(", copied 1 image into the notebook", ", copied %1 images into the notebook", r.copied);
+        }
+        if (r.missing) {
+            summary += i18np(", 1 image not found", ", %1 images not found", r.missing);
+        }
+        if (!r.errors.isEmpty()) {
+            summary += u". "_s + r.errors.first();
+        }
+        summary += u'.';
+    }
+    Q_EMIT statusMessage(summary);
+    return summary;
+}
+
+void NoteMetadata::beginRewrite()
+{
+    Q_EMIT aboutToRewriteNotes();
+}
+
+void NoteMetadata::endRewrite(const QStringList &changedNotes)
+{
+    if (changedNotes.isEmpty()) {
+        return;
+    }
+    QList<QUrl> urls;
+    for (const QString &path : changedNotes) {
+        urls << QUrl::fromLocalFile(path);
+        m_cache.remove(path);
+        m_bodyCache.remove(path);
+    }
+    ++m_revision;
+    Q_EMIT revisionChanged();
+    Q_EMIT notesRewritten(urls);
 }
 
 void NoteMetadata::filesChanged(const QStringList &paths)

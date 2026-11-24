@@ -117,6 +117,7 @@ ecm_add_qml_module(marknote_static
         asyncdocbuilder/asyncdocbuilder.h asyncdocbuilder/asyncdocbuilder.cpp
         notemetadata/frontmatter.h notemetadata/frontmatter.cpp
         notemetadata/notemetadata.h notemetadata/notemetadata.cpp
+        notemetadata/imagelinks.h notemetadata/imagelinks.cpp
         sync/remotebackend.h
         sync/syncengine.h sync/syncengine.cpp
         sync/localfolderbackend.h sync/localfolderbackend.cpp

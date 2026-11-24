@@ -200,6 +200,13 @@ StatetfulApp.StatefulWindow {
     }
 
     Connections {
+        target: NoteMetadata
+        function onStatusMessage(message: string): void {
+            root.showPassiveNotification(message, "long");
+        }
+    }
+
+    Connections {
         target: SyncManager
 
         function onFilesChanged(fileUrls: list<url>, filePaths: list<string>): void {

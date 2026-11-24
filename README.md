@@ -48,6 +48,12 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   Markdown shortcut; the *Insert* menu inserts the same blocks.
 
 **Storage**
+- **Image links are relative to the note**, so a notebook folder can be copied, synced or
+  moved anywhere. Inserted images and sketches are linked relatively; images from outside
+  the notebook are first copied next to the note (`<Note>_<timestamp>.png`). Moving a note
+  or folder fixes its links and takes the note's own images along. Older notes with
+  absolute `file://` links still show; right-click a notebook › *Make Image Links Relative*
+  converts them. Exports resolve relative images too.
 - Note metadata lives in Obsidian-compatible YAML front matter (`id`, `created`, `icon`,
   `tags`); the editor never shows it and keeps it intact on save. Plain notes get one the
   first time they are edited. Folder icons go in Dolphin's `.directory` file.

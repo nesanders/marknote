@@ -87,8 +87,8 @@ Fork-only work. Nothing here is pushed to upstream KDE.
       Mermaid, live-preview editor with `/` menu, tree drag and drop.
 - [ ] Incremental Drive listing (changes API) for big notebooks.
 - [ ] Encrypted notebooks once the crypto format exists (libsodium.js).
-- [ ] Desktop: write relative image links (e.g. for sketches) instead of
-      absolute `file://` paths; the web app already resolves both.
+- [x] Desktop: relative image links (display, insert, sketches, moves, exports,
+      *Make Image Links Relative*) — `feature/relative-links`.
 - [ ] Desktop: render math (the web app uses the same `$…$` / `$$…$$` syntax).
 
 ### Android app (native; the PWA may be enough)

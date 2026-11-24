@@ -834,13 +834,36 @@ Kirigami.Page {
         }
     }
 
+    // Moving notes and converting image links rewrite note files on disk.
+    property var rewrittenNotes: []
+    Connections {
+        target: NoteMetadata
+        function onAboutToRewriteNotes(): void {
+            if (!root.saved && root.document && root.noteFullPath.toString().length > 0) {
+                root.document.saveAs(root.noteFullPath);
+                root.saved = true;
+            }
+        }
+        function onNotesRewritten(notes: list<url>): void {
+            root.rewrittenNotes = notes.map(u => u.toString());
+            if (root.document) {
+                root.document.reloadFiles(notes);
+            }
+        }
+    }
+
     Connections {
         target: NavigationController
         function onNoteRenamedSignal(oldUrl, newUrl) {
             root.oldPath = newUrl.toString();
             if (root.document) {
                 root.document.updateFileUrl(newUrl);
+                // A moved note whose links were just rewritten: show the new text.
+                if (root.rewrittenNotes.indexOf(newUrl.toString()) !== -1) {
+                    root.document.reloadFiles([newUrl]);
+                }
             }
+            root.rewrittenNotes = [];
         }
     }
 

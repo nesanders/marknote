@@ -242,10 +242,12 @@ EditPage {
         nameFilters: [KI18n.i18n("Image files (*.jpg *.jpeg *.jxl *.png *.svg *.webp)"), KI18n.i18n("All files (*)")]
 
         onAccepted: {
-            const fileUrl = selectedFile.toString();
-            if (fileUrl.length > 0) {
-                let markdownImage = `![](${fileUrl})`;
-                restoreInsertTargetAndInsert(markdownImage);
+            if (selectedFile.toString().length > 0) {
+                // Relative to the note; images from outside the notebook are copied next to it.
+                const link = NoteMetadata.imageLink(root.noteFullPath, selectedFile, NavigationController.notebookPath);
+                if (link.length > 0) {
+                    restoreInsertTargetAndInsert(`![](${link})`);
+                }
             }
         }
     }
@@ -275,8 +277,11 @@ EditPage {
 
         onSaved: imagePath => {
             if (imagePath.toString().length > 0) {
-                let markdownImage = `![](file://${imagePath})`;
-                restoreInsertTargetAndInsert(markdownImage);
+                // Saved next to the note: link it relatively.
+                const link = NoteMetadata.imageLink(root.noteFullPath, "file://" + imagePath, NavigationController.notebookPath);
+                if (link.length > 0) {
+                    restoreInsertTargetAndInsert(`![](${link})`);
+                }
             }
         }
     }
