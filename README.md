@@ -47,6 +47,8 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   (reset with <kbd>Ctrl</kbd>+<kbd>0</kbd>) or *View › Zoom*; the level is remembered.
 - **Slash menu** (type `/`) grouped into Text / Lists / Blocks, showing each block's
   Markdown shortcut; the *Insert* menu inserts the same blocks.
+- **Autosave after every edit**, including the paragraph you are still typing in
+  (upstream only saved after the first change, or when you left the block).
 
 **Storage**
 - **Image links are relative to the note**, so a notebook folder can be copied, synced or
@@ -61,12 +63,21 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 
 **Sync**
 - Each notebook syncs on its own, to **Google Drive** or to **another folder** (for example
-  one Nextcloud or Syncthing already syncs): right-click a notebook › *Sync Settings…*, then
-  *Sync Now* (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>, also in the *File* menu).
+  one Nextcloud or Syncthing already syncs): right-click a notebook › *Sync Settings…*.
+- Synced notebooks sync **in the background**: shortly after Marknote starts, every 5
+  minutes, and when you come back to the window (*Settings › Sync in the Background* and
+  *Check for Changes Every…*). *Sync Now* (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>,
+  *File* menu, or the cloud button) syncs at once.
 - Changes go both ways. When a note was edited on two devices, both versions are kept
   (`Note (conflict 2026-11-24 0915).md`). Deleted notes are moved to a trash folder
   (`.marknote/trash`, or the Drive trash), never destroyed. An open note reloads when sync
   brings in a newer version.
+- **You can see what sync changed.** Notes that arrived from another device get a dot
+  (folders and notebooks show how many) until you open them, like unread mail. Opening
+  one says where and when it changed. If both sides changed a note, the banner says both
+  versions were kept and opens the other one. The cloud button next to *New Folder* shows
+  the state ("Synced with Google Drive 3 min ago", or the error) and the recent changes,
+  each one clickable. Background syncs stay quiet unless notes arrive.
 - Google Drive access uses the `drive.file` scope: Marknote can only see files it created.
   The sign-in is kept in KDE Wallet. No OAuth client is shipped; see below.
 
@@ -91,13 +102,23 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 <td><img src="screenshots/fork/sync-dialog.png" width="400" alt="Notebook sync settings with Google Drive selected"><br><sub>Per-notebook sync settings</sub></td>
 <td><img src="screenshots/fork/sync-received.png" width="440" alt="An open note updated by sync, with a notification"><br><sub>An open note updated by sync</sub></td>
 </tr>
+<tr>
+<td><img src="screenshots/fork/sync-activity.png" width="440" alt="Sync button popup with recent changes, updated notes marked with dots"><br><sub>Sync state and recent changes; updated notes marked</sub></td>
+<td><img src="screenshots/fork/sync-conflict-banner.png" width="440" alt="Banner on a note changed on two devices, with Open Other Version"><br><sub>A note changed on two devices</sub></td>
+</tr>
+<tr>
+<td><img src="screenshots/fork/encrypt-recovery-key.png" width="400" alt="Recovery key shown once after encrypting a notebook"><br><sub>Encrypting a notebook: the recovery key</sub></td>
+<td><img src="screenshots/fork/encrypted-locked-note.png" width="440" alt="A note in a locked notebook asks for the password"><br><sub>A note in a locked notebook</sub></td>
+</tr>
 </table>
 
 **Web app for phones** (folder [`web/`](web/README.md))
 - An installable web app (PWA) for Android and iPhone that opens the same notebooks from
   Google Drive: tree with drag and drop, tags, filter, icons, notes with math, Mermaid
   diagrams and images, a live-preview Markdown editor with a `/` menu, photo upload,
-  an offline copy with edits uploaded later, and conflict copies instead of overwrites. Try it with `?demo`; setup is in [web/README.md](web/README.md).
+  an offline copy with edits uploaded later, conflict copies instead of overwrites, and
+  encrypted notebooks (unlock, read, edit). Try it with `?demo` (its “Private” notebook is
+  encrypted, password `demo password`); setup is in [web/README.md](web/README.md).
 
 **Encrypted notebooks** (format: [docs/encryption.md](docs/encryption.md))
 - Right-click a notebook › *Encrypt Notebook…*: every note's text, tags, icon and dates
@@ -106,20 +127,12 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 - You get a **recovery key** once. Store it in your password manager: without the
   password or that key, nobody can read the notes, not even you.
 - Locked notebooks list their notes by title; opening one asks for the password.
-  Lock now with Ctrl+Shift+L; auto-lock after 5–60 idle minutes (Settings menu).
+  Lock now with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>; auto-lock after 5–60 idle
+  minutes (*Settings › Lock Encrypted Notebooks After*).
   Change the password or remove encryption from the notebook menu.
+- Moving a note between an encrypted and a plain notebook encrypts or decrypts it.
 - Synced notebooks stay encrypted on Google Drive; the web app unlocks and edits them
   too (encrypting a notebook or changing its password is desktop-only for now).
-
-**Seeing what sync changed**
-- Synced notebooks check for changes in the background (at start, every 5 minutes, and
-  when you come back to the window; *Settings › Sync in the Background*).
-- Notes that arrived from another device are marked with a dot (folders and notebooks
-  show how many) until you open them, like unread mail.
-- Opening such a note says where and when it changed. If both sides changed it, the
-  banner explains that both versions were kept and opens the other one.
-- The cloud button next to *New Folder* shows the sync state ("Synced with Google Drive
-  3 min ago", or the error) and the recent changes, each one clickable.
 
 ### Setting up Google Drive sync
 

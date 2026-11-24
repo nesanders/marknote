@@ -13,7 +13,7 @@ nothing is saved).
 <img src="../screenshots/web/desktop.png" width="640" alt="Marknote web on a wide screen: a note with math, a diagram, an image and a table">
 <img src="../screenshots/web/phone.png" width="640" alt="Marknote web on a phone: notes, a note, editing">
 
-<img src="../screenshots/web/live-editor.png" width="320" alt="Live preview editor with rendered math, diagram and image"> <img src="../screenshots/web/slash-menu.png" width="320" alt="Slash menu"> <img src="../screenshots/web/drag.png" width="320" alt="Dragging a note onto a folder">
+<img src="../screenshots/web/live-editor.png" width="320" alt="Live preview editor with rendered math, diagram and image"> <img src="../screenshots/web/slash-menu.png" width="320" alt="Slash menu"> <img src="../screenshots/web/drag.png" width="320" alt="Dragging a note onto a folder"> <img src="../screenshots/web/encrypted.png" width="320" alt="A note in a locked encrypted notebook asks for the password">
 
 ## What it does
 
