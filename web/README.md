@@ -48,6 +48,11 @@ nothing is saved).
 - **Offline:** notebooks and notes you have opened stay on the device. Edits and new
   notes made offline (or after the Google sign-in expired) wait on the device and
   upload when you are back. Rename/move/delete and new folders need a connection.
+- **Encrypted notebooks** made by Marknote desktop: unlock with the password or the
+  recovery key, then read and edit as usual. Drive, this device's cache and the offline
+  queue only ever hold the encrypted files; the decrypted text lives in memory until
+  you lock (Ctrl+Shift+L, the padlock) or after an idle time (Settings). The demo has
+  one, "Private" (password `demo password`).
 - Light/dark theme, text size, sorting.
 
 ## Privacy: your OAuth client stays private
@@ -118,4 +123,7 @@ markdown-it, DOMPurify) and deployed to GitHub Pages by
   live preview instead (this keeps notes byte-for-byte as written).
 - Adding images, moving, renaming and deleting need a connection; text edits and new
   notes work offline.
+- Encrypting a notebook, changing its password and removing encryption are done in
+  Marknote desktop. (Encryption needs WebAssembly: the page's Content Security Policy
+  allows `wasm-unsafe-eval`, which permits compiling WebAssembly but not JavaScript `eval`.)
 - Math and diagram libraries load the first time a note uses them (cached afterwards).

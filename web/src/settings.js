@@ -18,6 +18,7 @@ export const defaults = {
     lastNote: '',
     expanded: {},
     editorMode: 'live', // live | source
+    autoLockMinutes: 15, // encrypted notebooks: lock after this idle time (0: never)
 };
 
 export function loadSettings() {

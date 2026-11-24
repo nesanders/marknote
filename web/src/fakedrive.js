@@ -24,10 +24,12 @@ export class FakeDrive {
         this.next = 1;
         this.calls = 0;
         this.latency = 0;
+        this.ready = null; // a promise every call waits for (async demo seeding)
     }
 
     async tick() {
         ++this.calls;
+        if (this.ready) await this.ready;
         if (this.latency) await new Promise((r) => setTimeout(r, this.latency));
     }
 
@@ -88,8 +90,15 @@ export class FakeDrive {
         const walk = async (id, path) => {
             for (const file of await this.listChildren(id)) {
                 const p = path ? `${path}/${file.name}` : file.name;
-                if (p === '.marknote' || p.startsWith('.marknote/')) continue;
                 const isFolder = file.mimeType === FOLDER;
+                if (p === '.marknote') {
+                    if (isFolder) await walk(file.id, p);
+                    continue;
+                }
+                if (p.startsWith('.marknote/')) {
+                    if (p === '.marknote/vault.json') out.push({ ...file, path: p, parentId: id, isFolder: false });
+                    continue;
+                }
                 out.push({ ...file, path: p, parentId: id, isFolder });
                 if (isFolder) await walk(file.id, p);
             }
@@ -237,5 +246,27 @@ export function seedDemo(drive) {
         + '- [ ] Tick me\n- [x] Already done\n\n> Click any rendered block while editing to change its source.\n');
     note(personal, 'Recipes', { created: daysAgo(12), icon: '🍲', tags: ['home'] }, '# Recipes\n\n## Lentil soup\n\nOnion, carrots, lentils, stock. 30 minutes.\n');
     note(journal, iso(daysAgo(1)).slice(0, 10), { created: daysAgo(1), tags: ['journal'] }, '# Yesterday\n\nTried Marknote on the phone.\n');
+    return drive;
+}
+
+export const DEMO_PASSWORD = 'demo password';
+
+/**
+ * An encrypted notebook "Private" (password DEMO_PASSWORD), made like the
+ * desktop app makes one. Loads libsodium, so only demo mode and tests use it.
+ */
+export async function seedEncryptedDemo(drive) {
+    const V = await import('./vault.js');
+    const root = [...drive.nodes.values()].find((n) => n.name === 'Marknote' && n.parents.includes('root'));
+    const nb = drive.add(root.id, 'Private', FOLDER);
+    drive.add(nb.id, '.directory', 'text/plain', '[Desktop Entry]\nX-Marknote-Emoji=🔒\n');
+    const { vault, key } = await V.createVault(DEMO_PASSWORD);
+    const dot = drive.add(nb.id, '.marknote', FOLDER);
+    drive.add(dot.id, 'vault.json', 'application/json', JSON.stringify(vault, null, 2));
+    const notes = [
+        ['Passwords hint', '---\nid: 01DEMOPRIVATE0000000000001\ntags: [private]\nicon: "🔑"\n---\n\n# Passwords hint\n\nThe bike lock is the year we met, backwards.\n'],
+        ['Gift ideas', '---\nid: 01DEMOPRIVATE0000000000002\ntags: [private, family]\n---\n\n# Gift ideas\n\n- [ ] Book for Sam\n- [x] Concert tickets\n'],
+    ];
+    for (const [name, text] of notes) drive.add(nb.id, name + '.md', 'text/markdown', await V.encryptNote(text, key));
     return drive;
 }

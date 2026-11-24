@@ -228,3 +228,57 @@ export function MovePicker({ library, item, onClose, onMoved }) {
         </Dialog>
     );
 }
+
+/** Password (or recovery key) for an encrypted notebook. Used inline and in a dialog. */
+export function UnlockForm({ library, onUnlocked, autoFocus }) {
+    const [secret, setSecret] = useState('');
+    const [recovery, setRecovery] = useState(false);
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState(false);
+    const submit = async (e) => {
+        e?.preventDefault();
+        if (!secret || busy) return;
+        setBusy(true);
+        setError('');
+        try {
+            if (await library.unlock(secret, { recovery })) {
+                setSecret('');
+                onUnlocked?.();
+                return;
+            }
+            setError(recovery ? 'That recovery key does not fit this notebook.' : 'Wrong password.');
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <form class="unlock-form" onSubmit={submit}>
+            <label class="field">
+                <span>{recovery ? 'Recovery key' : 'Password'}</span>
+                <input type={recovery ? 'text' : 'password'} value={secret} autofocus={autoFocus} autocomplete={recovery ? 'off' : 'current-password'}
+                    spellcheck={false} placeholder={recovery ? 'ABCD-EFGH-…' : ''} class={recovery ? 'mono' : ''}
+                    onInput={(e) => setSecret(e.target.value)} />
+            </label>
+            {error && <p class="error" role="alert">{error}</p>}
+            <div class="unlock-actions">
+                <button type="button" class="link-button" onClick={() => {
+                    setRecovery(!recovery);
+                    setSecret('');
+                    setError('');
+                }}>{recovery ? 'Use password instead' : 'Use recovery key…'}</button>
+                <button type="submit" class="primary" disabled={!secret || busy}>{busy ? 'Unlocking…' : 'Unlock'}</button>
+            </div>
+        </form>
+    );
+}
+
+export function UnlockDialog({ library, name, onClose }) {
+    return (
+        <Dialog title={`Unlock “${name}”`} onClose={onClose}>
+            <p class="hint">This notebook is encrypted. Note titles and folders are visible; their contents need the password.</p>
+            <UnlockForm library={library} onUnlocked={onClose} autoFocus />
+        </Dialog>
+    );
+}

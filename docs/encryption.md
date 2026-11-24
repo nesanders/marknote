@@ -99,6 +99,14 @@ Marknote encrypts it the next time it is saved.
 - Encrypting a notebook encrypts every note in place; removing encryption
   decrypts them and deletes `vault.json`. Both need the notebook unlocked.
 
+## Clients
+
+- **Desktop**: all of the above, plus encrypting, changing the password and removing
+  encryption.
+- **Web app**: unlock (password or recovery key), read, edit, create; locks on demand
+  or after idle time. Its device cache and offline queue store only the encrypted
+  files.
+
 ## Test vectors
 
 `src/autotests/data/encryption/` holds a vault and notes produced by one

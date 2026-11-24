@@ -355,6 +355,35 @@ async function demoPhone(browser, errors) {
     await ctx.close();
 }
 
+async function demoEncrypted(browser, errors) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Private")');
+    await page.waitForSelector('.tree .row:has-text("Gift ideas")');
+    assert.equal(await page.locator('.tree .row:has-text("vault")').count(), 0);
+    await page.click('.row:has-text("Gift ideas")');
+    await page.waitForSelector('.locked-note');
+    assert.equal(await page.locator('.rendered').count(), 0);
+    await shot(page, 'encrypted-locked');
+    await page.fill('.locked-note input', 'wrong');
+    await page.click('.locked-note button.primary');
+    await page.waitForSelector('.locked-note .error');
+    await page.fill('.locked-note input', 'demo password');
+    await page.click('.locked-note button.primary');
+    await page.waitForSelector('.rendered h1:has-text("Gift ideas")', { timeout: 15000 });
+    await page.waitForSelector('.meta-strip .chip:has-text("family")');
+    await shot(page, 'encrypted-unlocked');
+    // Lock again from the notebook toolbar: back to the unlock form.
+    await page.getByRole('button', { name: 'Lock notebook' }).click();
+    await page.waitForSelector('.locked-note');
+    // Recovery key path is offered.
+    await page.click('.locked-note .link-button');
+    await page.waitForSelector('.locked-note input.mono');
+    await ctx.close();
+}
+
 async function realMode(browser, errors) {
     const google = fakeGoogle();
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
@@ -443,8 +472,9 @@ async function realMode(browser, errors) {
     assert.doesNotMatch(google.byName('From the web.md').content, /Written offline/);
     await ctx.setOffline(false);
     await page.evaluate(() => dispatchEvent(new Event('online')));
-    await page.waitForFunction(() => !document.querySelector('.banner'), null, { timeout: 8000 });
+    for (let i = 0; i < 40 && !/Written offline/.test(google.byName('From the web.md').content); ++i) await page.waitForTimeout(250);
     assert.match(google.byName('From the web.md').content, /Written offline/);
+    await page.waitForFunction(() => !document.querySelector('.banner'), null, { timeout: 8000 });
 
     // Reload: notes are shown at once from this device's copy, the token is still valid.
     await page.reload();
@@ -455,9 +485,9 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
-    for (const [name, fn] of steps) {
+    for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {
             await fn(browser, errors);
             console.log(`ok - ${name}`);
