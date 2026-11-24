@@ -46,7 +46,7 @@ class GoogleAuth : public QObject
     Q_PROPERTY(QString account READ account NOTIFY accountChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QUrl pendingAuthorizationUrl READ pendingAuthorizationUrl NOTIFY busyChanged)
-    Q_PROPERTY(QString tokenStorage READ tokenStorage CONSTANT)
+    Q_PROPERTY(QString tokenStorage READ tokenStorage NOTIFY tokenStorageChanged)
 
 public:
     static constexpr auto DriveFileScope = "https://www.googleapis.com/auth/drive.file";
@@ -96,6 +96,7 @@ Q_SIGNALS:
     void accountChanged();
     void lastErrorChanged();
     void restored();
+    void tokenStorageChanged();
 
 private:
     void setBusy(bool busy);

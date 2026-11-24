@@ -235,6 +235,16 @@ if (WITH_KRUNNER)
     target_compile_definitions(marknote_static PUBLIC HAVE_KRUNNER)
 endif()
 
+if (TARGET Qt6::DBus AND NOT ANDROID)
+    target_link_libraries(marknote_static PUBLIC Qt6::DBus)
+    target_compile_definitions(marknote_static PUBLIC HAVE_QTDBUS)
+endif()
+
+if (TARGET PkgConfig::LIBSECRET)
+    target_link_libraries(marknote_static PUBLIC PkgConfig::LIBSECRET)
+    target_compile_definitions(marknote_static PUBLIC HAVE_LIBSECRET)
+endif()
+
 if (TARGET KF6::Wallet)
     target_link_libraries(marknote_static PUBLIC KF6::Wallet)
     target_compile_definitions(marknote_static PUBLIC HAVE_KWALLET)

@@ -52,8 +52,14 @@ endif()
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml QuickControls2 Svg Network NetworkAuth)
 find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Kirigami I18n Config CoreAddons IconThemes ColorScheme Notifications ItemModels Mime)
 if (NOT ANDROID)
-    # Keeps the Google sign-in in KDE Wallet; without it a private file is used.
+    # Where the Google sign-in is kept: KDE Wallet 6, KDE Wallet 5 (D-Bus),
+    # the system keyring (libsecret), else a private file.
     find_package(KF6Wallet ${KF_MIN_VERSION})
+    find_package(Qt6 ${QT_MIN_VERSION} COMPONENTS DBus)
+    find_package(PkgConfig)
+    if (PkgConfig_FOUND)
+        pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+    endif()
 endif()
 
 if (NOT ANDROID AND KF6CoreAddons_VERSION VERSION_LESS "6.19.0")

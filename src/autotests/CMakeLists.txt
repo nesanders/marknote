@@ -66,3 +66,9 @@ ecm_add_test(imagepathstest.cpp
     LINK_LIBRARIES marknote_static Qt::Test
     NAME_PREFIX "marknote-"
 )
+
+ecm_add_test(tokenstoretest.cpp
+    TEST_NAME tokenstoretest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)
