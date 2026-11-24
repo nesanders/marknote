@@ -5,6 +5,7 @@ on:
     branches:
       - ci/flatpak-build
       - ci/flatpak-master
+      - 'feature/**'
   workflow_dispatch: {}
 
 jobs:
