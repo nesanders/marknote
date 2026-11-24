@@ -36,6 +36,12 @@ public:
     /// Short user-visible name, e.g. "Google Drive".
     virtual QString displayName() const = 0;
 
+    /// The destination's own id for the notebook folder, if it has one.
+    virtual QString rootId() const
+    {
+        return {};
+    }
+
     /// Every file and folder under the destination root, keyed by relative path.
     virtual bool listAll(QHash<QString, RemoteFile> *out, QString *error) = 0;
 

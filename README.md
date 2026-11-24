@@ -82,6 +82,10 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   versions were kept and opens the other one. The cloud button next to *New Folder* shows
   the state ("Synced with Google Drive 3 min ago", or the error) and the recent changes,
   each one clickable. Background syncs stay quiet unless notes arrive.
+- **Show in Google Drive** (note, folder and notebook menus, and *Note* menu) opens the item
+  on drive.google.com, where Google's own Share dialog lets you share it with other Google
+  accounts (view or edit). They can add a shortcut to it in their Drive from Google's
+  sharing email. Shared notes are Markdown files: Drive previews them as plain text.
 - Google Drive access uses the `drive.file` scope: Marknote can only see files it created.
   The sign-in is kept in KDE Wallet. No OAuth client is shipped; see below.
 

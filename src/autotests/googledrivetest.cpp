@@ -344,6 +344,12 @@ private Q_SLOTS:
         const QString rootId = backend->rootFolderId();
         delete backend;
         const auto onDrive = drive.tree(rootId);
+        // The sync state knows where everything is on Drive (for "Show in Google Drive").
+        const SyncState state = SyncState::load(a + u"/.marknote/sync/gdrive.json"_s);
+        QCOMPARE(state.ids.value(QString()), rootId);
+        QCOMPARE(state.ids.value(u"Note.md"_s), onDrive.value(u"Note.md"_s));
+        QCOMPARE(state.ids.value(u"Folder/Deep"_s), onDrive.value(u"Folder/Deep"_s));
+        QCOMPARE(state.ids.value(u"Folder/Deep/Inner.md"_s), onDrive.value(u"Folder/Deep/Inner.md"_s));
         QVERIFY(onDrive.contains(u"Note.md"_s));
         QVERIFY(onDrive.contains(u"Folder/Deep/Inner.md"_s));
         QCOMPARE(drive.nodes.value(onDrive.value(u"Folder/Deep/Inner.md"_s)).content, QByteArray("inner"));

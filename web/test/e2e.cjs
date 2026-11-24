@@ -509,6 +509,12 @@ async function realMode(browser, errors) {
     // Reload: notes are shown at once from this device's copy, the token is still valid.
     await page.reload();
     await page.waitForSelector('.row:has-text("From the web")');
+
+    // "Show in Google Drive" opens the note's own page on drive.google.com.
+    await ctx.route('https://drive.google.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Drive</title>' }));
+    await page.dispatchEvent('.row:has-text("Plan.md"), .row:has-text("Plan")', 'contextmenu');
+    const [drivePage] = await Promise.all([ctx.waitForEvent('page'), page.click('.menu button:has-text("Show in Google Drive"), [role=menu] :text("Show in Google Drive")')]);
+    assert.equal(drivePage.url(), `https://drive.google.com/file/d/${google.byName('Plan.md').id}/view`);
     await ctx.close();
 }
 

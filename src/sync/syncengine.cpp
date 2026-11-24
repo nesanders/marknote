@@ -38,6 +38,10 @@ SyncState SyncState::load(const QString &filePath)
     for (const QJsonValue &v : root.value(u"folders"_s).toArray()) {
         state.folders.insert(v.toString());
     }
+    const QJsonObject ids = root.value(u"ids"_s).toObject();
+    for (auto it = ids.begin(); it != ids.end(); ++it) {
+        state.ids.insert(it.key(), it.value().toString());
+    }
     return state;
 }
 
@@ -49,10 +53,15 @@ bool SyncState::save(const QString &filePath) const
     }
     QStringList sortedFolders(folders.cbegin(), folders.cend());
     sortedFolders.sort();
+    QJsonObject ids;
+    for (auto it = this->ids.cbegin(); it != this->ids.cend(); ++it) {
+        ids.insert(it.key(), it.value());
+    }
     const QJsonObject root{
         {u"version"_s, 1},
         {u"files"_s, files},
         {u"folders"_s, QJsonArray::fromStringList(sortedFolders)},
+        {u"ids"_s, ids},
     };
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QSaveFile out(filePath);
@@ -287,6 +296,7 @@ SyncResult SyncEngine::run(const Progress &progress)
         result.heldBack << path;
     };
     QHash<QString, RemoteFile> uploadedFiles;
+    QHash<QString, QString> createdFolders;
 
     auto upload = [&](const QString &path, const RemoteFile *existing) -> bool {
         QFile f(absolute(path));
@@ -471,6 +481,7 @@ SyncResult SyncEngine::run(const Progress &progress)
             QString err;
             if (m_backend->createFolder(folder, &created, &err)) {
                 next.folders.insert(folder);
+                createdFolders.insert(folder, created.id);
             } else {
                 result.errors << err;
             }
@@ -485,6 +496,7 @@ SyncResult SyncEngine::run(const Progress &progress)
                 QString err;
                 if (m_backend->createFolder(folder, &created, &err)) {
                     next.folders.insert(folder);
+                    createdFolders.insert(folder, created.id);
                 }
             } else if (QDir().mkpath(absolute(folder))) {
                 next.folders.insert(folder);
@@ -509,6 +521,24 @@ SyncResult SyncEngine::run(const Progress &progress)
         QString err;
         if (!m_backend->emptyTrash(&result.trashDeleted, &err)) {
             result.errors << err;
+        }
+    }
+
+    // Remember where everything is at the destination (for links to it).
+    next.ids.clear();
+    if (!m_backend->rootId().isEmpty()) {
+        next.ids.insert(QString(), m_backend->rootId());
+    }
+    for (auto it = next.files.cbegin(); it != next.files.cend(); ++it) {
+        const QString id = uploadedFiles.contains(it.key()) ? uploadedFiles.value(it.key()).id : remoteFiles.value(it.key()).id;
+        if (!id.isEmpty()) {
+            next.ids.insert(it.key(), id);
+        }
+    }
+    for (const QString &folder : std::as_const(next.folders)) {
+        const QString id = remote.value(folder).id.isEmpty() ? createdFolders.value(folder) : remote.value(folder).id;
+        if (!id.isEmpty()) {
+            next.ids.insert(folder, id);
         }
     }
 

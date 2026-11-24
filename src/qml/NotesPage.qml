@@ -592,6 +592,16 @@ Kirigami.ScrollablePage {
     }
 
     /// Move a note or folder (by path or file URL) into @p destPath, keeping the editor on it.
+    /// Open the note or folder on drive.google.com (where Google's Share dialog is).
+    function showInGoogleDrive(path: string): void {
+        const url = SyncManager.googleDriveUrl(path);
+        if (url.length > 0) {
+            Qt.openUrlExternally(url);
+        } else {
+            root._window.showPassiveNotification(KI18n.i18nc("@info:status", "Not on Google Drive yet: sync this notebook first."));
+        }
+    }
+
     // View › Sort Notes › Manual: rows can be dragged above or below each other.
     readonly property bool manualOrder: Config.sortBehaviour === "sort-manual"
 
@@ -881,6 +891,13 @@ Kirigami.ScrollablePage {
                 onTriggered: root._window.openIconPicker(folderMenu.delegateItem.fileUrl, true, folderMenu.delegateItem.name)
             }
 
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Show in Google Drive")
+                icon.name: "folder-gdrive"
+                visible: folderMenu.delegateItem ? SyncManager.syncsToGoogle(folderMenu.delegateItem.normPath) : false
+                onTriggered: root.showInGoogleDrive(folderMenu.delegateItem.normPath)
+            }
+
             Kirigami.Action { separator: true }
 
             Kirigami.Action {
@@ -926,6 +943,15 @@ Kirigami.ScrollablePage {
                 text: KI18n.i18nc("@action:inmenu", "Edit Tags…")
                 icon.name: "tag"
                 onTriggered: root._window.openTagEditor(menu.delegateItem.fileUrl, menu.delegateItem.name)
+            }
+
+            Kirigami.Action { separator: true }
+
+            Kirigami.Action {
+                text: KI18n.i18nc("@action:inmenu", "Show in Google Drive")
+                icon.name: "folder-gdrive"
+                visible: menu.delegateItem ? SyncManager.syncsToGoogle(menu.delegateItem.normPath) : false
+                onTriggered: root.showInGoogleDrive(menu.delegateItem.normPath)
             }
 
             Kirigami.Action { separator: true }

@@ -132,6 +132,14 @@ QtObject {
         onTriggered: root.notesPage()?.copyNote(root.noteUrl)
     }
 
+    property Kirigami.Action showInGoogleDrive: Kirigami.Action {
+        text: KI18n.i18nc("@action:inmenu", "Show in Google Drive")
+        icon.name: "folder-gdrive"
+        visible: root.hasNote && SyncManager.syncsToGoogle(NavigationController.absoluteNotePath)
+        enabled: visible
+        onTriggered: root.notesPage()?.showInGoogleDrive(NavigationController.absoluteNotePath)
+    }
+
     property Kirigami.Action deleteNote: Kirigami.Action {
         text: KI18n.i18nc("@action:inmenu", "Delete…")
         icon.name: "delete"

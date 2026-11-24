@@ -20,6 +20,9 @@ namespace Sync
 struct SyncState {
     QHash<QString, QByteArray> files; ///< relative path -> hex md5 at last sync
     QSet<QString> folders;
+    /// Relative path -> the destination's id ("" = the notebook folder).
+    /// Lets the app link to a note on Google Drive.
+    QHash<QString, QString> ids;
 
     static SyncState load(const QString &filePath);
     bool save(const QString &filePath) const;
