@@ -55,6 +55,12 @@ public:
     Q_INVOKABLE void transformToList(TreeItem *block, bool isOrdered, int startNumber, const QString &text);
     Q_INVOKABLE void transformToChecklist(TreeItem *block, bool isChecked, const QString &text);
     Q_INVOKABLE void toggleCheckbox(TreeItem *block);
+    /// Replace a to-do block's markdown (docs/todo.md), undoably.
+    Q_INVOKABLE void editTodo(TreeItem *block, const QString &markdown);
+    /// The top-level checklist @p block is in, if it can become a to-do block.
+    Q_INVOKABLE TreeItem *checklistForTodo(TreeItem *block) const;
+    /// Turn the checklist @p block is in into a to-do block.
+    Q_INVOKABLE void makeTodoBlock(TreeItem *block);
     Q_INVOKABLE void splitListItem(TreeItem *block, const QString &text, int splitIndex);
     Q_INVOKABLE void changeListType(TreeItem *block, int listType);
     Q_INVOKABLE bool isListItem(TreeItem *block) const;

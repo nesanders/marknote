@@ -411,6 +411,72 @@ async function demoBlockHandles(browser, errors) {
     await ctx.close();
 }
 
+async function demoTodo(browser, errors) {
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Trip to Lisbon")');
+    await page.waitForSelector('.todo-block');
+    const openItems = () => page.locator('.todo-block > .todo-list .todo-text').allTextContents();
+    assert.deepEqual(await openItems(), ['Book flights', 'Renew passport', 'Find a place near Alfama', 'Pack charger']);
+    assert.equal(await page.locator('.due-chip.overdue').count(), 1);
+    assert.equal(await page.locator('.due-chip.today').count(), 1);
+    assert.equal(await page.locator('details.todo-done').evaluate((d) => d.open), false);
+    await shot(page, 'phone-todo');
+
+    // Ticking moves the item to the top of Done, dated today.
+    await page.locator('.todo-item:has-text("Book flights") input.task').tap();
+    await page.waitForSelector('summary:has-text("Done (3)")');
+    assert.deepEqual(await openItems(), ['Renew passport', 'Find a place near Alfama', 'Pack charger']);
+    await page.locator('details.todo-done > summary').tap();
+    const doneItems = () => page.locator('details.todo-done .todo-text').allTextContents();
+    assert.deepEqual(await doneItems(), ['Book flights', 'Ask for time off', 'Pick dates']);
+    assert.match(await page.locator('details.todo-done .todo-item').first().textContent(), /✓ Today/);
+    await shot(page, 'phone-todo-done');
+
+    // Unticking puts it back at the bottom; the Done section stays open.
+    await page.locator('details.todo-done .todo-item:has-text("Book flights") input.task').tap();
+    await page.waitForSelector('summary:has-text("Done (2)")');
+    assert.deepEqual((await openItems()).at(-1), 'Book flights');
+    assert.equal(await page.locator('details.todo-done').evaluate((d) => d.open), true);
+
+    // A due date from the picker.
+    await page.locator('.todo-item:has-text("Find a place") .due-add').tap();
+    await page.waitForSelector('.due-picker');
+    await shot(page, 'phone-todo-picker');
+    await page.locator('.due-picker button', { hasText: 'Tomorrow' }).tap();
+    await page.waitForSelector('.todo-item:has-text("Find a place") .due-chip:has-text("Tomorrow")');
+
+    // Order by due date.
+    await page.locator('.todo-sort').tap();
+    await page.waitForSelector('.todo-sort:has-text("By due date")');
+    assert.deepEqual(await openItems(), ['Book flights', 'Renew passport', 'Find a place near Alfama', 'Pack charger']);
+
+    // Add an item from the rendered view.
+    await page.locator('input.todo-new').tap();
+    await page.keyboard.type('Buy a guidebook');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.todo-text:has-text("Buy a guidebook")');
+    assert.equal(await page.evaluate(() => document.activeElement?.className), 'todo-new');
+
+    // The editor: header, fold, chips; ticking there moves the item too.
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-todo-head');
+    assert.equal(await page.locator('.cm-due.today').count(), 1);
+    assert.equal(await page.locator('.cm-line:has-text("Ask for time off")').count(), 0);
+    await page.locator('.cm-todo-done').tap();
+    await page.waitForSelector('.cm-line:has-text("Ask for time off")');
+    await shot(page, 'phone-todo-editor');
+    await page.locator('.cm-line:has-text("Pack charger") input.cm-task').tap();
+    await page.waitForSelector('.cm-todo-done:has-text("Done (3)")');
+    const lines = (await page.locator('.cm-line').allTextContents()).map((t) => t.trim()).filter(Boolean);
+    const doneAt = lines.findIndex((t) => /Pack charger/.test(t));
+    assert.ok(doneAt > lines.findIndex((t) => /Buy a guidebook/.test(t)), JSON.stringify(lines));
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -577,7 +643,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {

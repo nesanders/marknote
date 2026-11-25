@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Marknote fork contributors
 // SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import * as FM from '../frontmatter.js';
-import { renderMarkdown, toggleTask } from '../markdown.js';
+import { renderMarkdown } from '../markdown.js';
+import * as Todo from '../todo.js';
+import { openDuePicker } from './duepicker.js';
 import { enhance } from '../extras.js';
 import { Editor, actions } from './Editor.jsx';
 import { Icon, ItemIcon } from './icons.jsx';
@@ -142,22 +144,63 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
         if (!editing && articleRef.current) enhance(articleRef.current, { images: resolveImage }).catch(() => {});
     }, [html, editing, revision]);
 
+    // Saves a body changed in the rendered view (ticks, to-do edits).
+    const saveBody = async (body) => {
+        const full = FM.join(split.raw, body);
+        setText(full);
+        try {
+            const r = await library.saveNote(item.id, full);
+            if (r.conflictCopy) {
+                setText(library.text(item.id));
+                toast(`This note changed on another device. Your change was saved as “${r.conflictCopy.title}”.`, 'warning');
+            }
+        } catch (err) {
+            toast(`Could not save: ${err.message}`, 'error');
+        }
+    };
+
+    // Which Done sections are open, by block number, so they stay open across re-renders.
+    const openDone = useRef(new Set());
+    const refocus = useRef(null);
+    useLayoutEffect(() => {
+        if (editing || !articleRef.current) return;
+        articleRef.current.querySelectorAll('details.todo-done').forEach((d, i) => {
+            d.open = openDone.current.has(i);
+        });
+        if (refocus.current !== null) {
+            articleRef.current.querySelectorAll('input.todo-new')[refocus.current]?.focus();
+            refocus.current = null;
+        }
+    }, [html, editing]);
+    useEffect(() => {
+        openDone.current = new Set();
+    }, [item.id]);
+    const onToggleDetails = (e) => {
+        if (!e.target.matches?.('details.todo-done')) return;
+        const i = [...articleRef.current.querySelectorAll('details.todo-done')].indexOf(e.target);
+        if (e.target.open) openDone.current.add(i);
+        else openDone.current.delete(i);
+    };
+
     const onContentClick = async (e) => {
         const box = e.target.closest('input.task');
         if (box) {
-            const line = Number(box.dataset.line);
-            const body = toggleTask(split.body, line, box.checked);
-            const full = FM.join(split.raw, body);
-            setText(full);
-            try {
-                const r = await library.saveNote(item.id, full);
-                if (r.conflictCopy) {
-                    setText(library.text(item.id));
-                    toast(`This note changed on another device. Your change was saved as “${r.conflictCopy.title}”.`, 'warning');
-                }
-            } catch (err) {
-                toast(`Could not save: ${err.message}`, 'error');
-            }
+            await saveBody(Todo.toggleLine(split.body, Number(box.dataset.line), box.checked));
+            return;
+        }
+        const due = e.target.closest('[data-due-line]');
+        if (due) {
+            const line = Number(due.dataset.dueLine);
+            openDuePicker(due, due.dataset.due ?? null, (date) => {
+                const body = Todo.apply(split.body, { type: 'due', line, date });
+                if (body !== null) saveBody(body);
+            });
+            return;
+        }
+        const sort = e.target.closest('[data-todo-sort]');
+        if (sort) {
+            const body = Todo.apply(split.body, { type: 'sort', line: Number(sort.dataset.line), sort: sort.dataset.todoSort });
+            if (body !== null) await saveBody(body);
             return;
         }
         const link = e.target.closest('a[data-note-link]');
@@ -165,6 +208,19 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
             e.preventDefault();
             onOpenPath(decodeURIComponent(link.getAttribute('data-note-link')), item);
         }
+    };
+
+    const onContentKey = (e) => {
+        const input = e.target.closest?.('input.todo-new');
+        if (!input || e.key !== 'Enter' || e.isComposing) return;
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        const body = Todo.apply(split.body, { type: 'add', line: Number(input.dataset.todoAdd), text });
+        if (body === null) return;
+        const index = [...articleRef.current.querySelectorAll('input.todo-new')].indexOf(input);
+        refocus.current = index; // keep typing: the same block's field, after the re-render
+        saveBody(body);
     };
 
     const locked = text === undefined && library.locked;
@@ -227,7 +283,8 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
                     </div>
                 </>
             ) : (
-                <article class="rendered" ref={articleRef} onClick={onContentClick} onDblClick={(e) => !e.target.closest('a,input') && setEditing(true)}
+                <article class="rendered" ref={articleRef} onClick={onContentClick} onKeyDown={onContentKey} onToggleCapture={onToggleDetails}
+                    onDblClick={(e) => !e.target.closest('a,input,button,summary') && setEditing(true)}
                     dangerouslySetInnerHTML={{ __html: html || '<p class="hint">Empty note. Tap ✎ to write.</p>' }} />
             ))}
         </section>

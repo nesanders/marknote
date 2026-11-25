@@ -5,6 +5,7 @@
 // same file shapes, no network.
 
 import { FOLDER } from './drive.js';
+import { localToday, addDays } from './todo.js';
 
 function hash(text) {
     // FNV-1a, two lanes: only identity matters here (Drive uses md5).
@@ -233,6 +234,17 @@ export function seedDemo(drive) {
     note(reading, 'Qt Quick layouts', { created: daysAgo(50), tags: ['qt', 'learning'] }, '# Qt Quick layouts\n\nPrefer `Layout.fillWidth` over anchors inside layouts.\n');
     note(projects, 'Long checklist', { created: daysAgo(0.2), tags: ['todo'] },
         '# Long checklist\n\n- [ ] Buy milk\n- [x] Write sync engine\n- [ ] Try the web app on the phone\n- [ ] Create the OAuth client\n');
+    const today = localToday();
+    note(projects, 'Trip to Lisbon', { created: daysAgo(3), icon: '✈️', tags: ['todo', 'travel'] },
+        '# Trip to Lisbon\n\n<!-- marknote-todo -->\n'
+        + `- [ ] Book flights 📅 ${addDays(today, -1)}\n`
+        + `- [ ] Renew passport 📅 ${today}\n`
+        + '- [ ] Find a place near Alfama\n'
+        + `- [ ] Pack charger 📅 ${addDays(today, 9)}\n`
+        + '\n<details>\n<summary>Done (2)</summary>\n\n'
+        + `- [x] Ask for time off ✅ ${addDays(today, -1)}\n`
+        + `- [x] Pick dates 📅 ${addDays(today, -4)} ✅ ${addDays(today, -5)}\n`
+        + '\n</details>\n\nTram 28 goes up to the castle.\n');
     drive.add(projects.id, 'Scratch.md', 'text/markdown', '# Scratch\n\nA plain note without front matter.\n');
     note(projects, 'Weekly sync', { created: daysAgo(7), icon: '🗓️', tags: ['meetings'] }, '# Weekly sync\n\n1. Status\n2. Blockers\n3. Next steps\n');
     const sketch = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="140" viewBox="0 0 320 140"><rect width="320" height="140" rx="10" fill="#e8f4fb"/><circle cx="70" cy="70" r="38" fill="#3daee9"/><rect x="130" y="40" width="150" height="16" rx="8" fill="#2d7fb8"/><rect x="130" y="70" width="110" height="12" rx="6" fill="#93cee9"/><rect x="130" y="92" width="130" height="12" rx="6" fill="#93cee9"/></svg>';

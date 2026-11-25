@@ -12,6 +12,7 @@ import { RangeSetBuilder, StateField } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { renderMarkdown } from '../markdown.js';
 import { renderMath, renderMermaid } from '../extras.js';
+import { toggleInEditor } from './todoedit.js';
 
 // ---- widgets ----------------------------------------------------------------
 
@@ -35,6 +36,8 @@ class CheckboxWidget extends WidgetType {
             const pos = view.posAtDOM(box);
             const text = view.state.sliceDoc(pos, pos + 3);
             if (!/^\[[ xX]\]$/.test(text)) return;
+            // In a to-do block the item moves to (or out of) the Done section.
+            if (toggleInEditor(view, view.state.doc.lineAt(pos).number - 1, !this.checked)) return;
             view.dispatch({ changes: { from: pos + 1, to: pos + 2, insert: this.checked ? ' ' : 'x' } });
         });
         return box;

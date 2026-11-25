@@ -49,6 +49,11 @@ DelegateChooser {
         BlockTable { }
     }
 
+    DelegateChoice {
+        roleValue: MDOptions.ElementType.Todo
+        BlockTodo { }
+    }
+
     // Default choice
     DelegateChoice {
         Item {

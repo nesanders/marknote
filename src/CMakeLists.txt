@@ -99,6 +99,8 @@ ecm_add_qml_module(marknote_static
         qml/BlockTable.qml
         qml/BlockText.qml
         qml/BlockTableCell.qml
+        qml/BlockTodo.qml
+        qml/TodoDueDialog.qml
     SOURCES
         documenthandler.cpp documenthandler.h
         rich_documenthandler.cpp rich_documenthandler.h
@@ -142,6 +144,8 @@ ecm_add_qml_module(marknote_static
         commands/commandmanager.h commands/commandmanager.cpp
         commands/mergewithpreviousblock.h commands/mergewithpreviousblock.cpp
         commands/edittext.h commands/edittext.cpp
+        commands/edittodo.h commands/edittodo.cpp
+        todoblock.h todoblock.cpp
         commands/editcelltext.h commands/editcelltext.cpp
         commands/editcode.h commands/editcode.cpp
         commands/parseblock.h commands/parseblock.cpp

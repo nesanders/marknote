@@ -6,6 +6,7 @@
 #include "deindentlistitem.h"
 #include "editcelltext.h"
 #include "editcode.h"
+#include "edittodo.h"
 #include "edittext.h"
 #include "indentlistitem.h"
 #include "insertcolumnintablecommand.h"
@@ -27,6 +28,8 @@
 #include "transformtoblockquote.h"
 #include "transformtochecklist.h"
 #include "transformtolist.h"
+#include "mdtreemodel/mddatagenerator.h"
+#include "todoblock.h"
 #include <QDesktopServices>
 #include <QRegularExpression>
 #include <QUrl>
@@ -238,6 +241,51 @@ void CommandManager::toggleCheckbox(TreeItem *block)
         return;
     }
     pushCommand(new ToggleCheckboxCommand(block, m_model));
+}
+
+void CommandManager::editTodo(TreeItem *block, const QString &markdown)
+{
+    if (!block || !m_model || block->todoMarkdown().isNull() || block->todoMarkdown() == markdown) {
+        return;
+    }
+    pushCommand(new EditTodoCommand(block, markdown, m_model));
+}
+
+TreeItem *CommandManager::checklistForTodo(TreeItem *block) const
+{
+    // A to-do block lives at the top level of the note, like its marker.
+    TreeItem *list = block;
+    while (list && list->parent() && list->parent()->parent()) {
+        list = list->parent();
+    }
+    if (!list || !list->parent() || list->item()->type() != MD::ItemType::List || list->childCount() == 0) {
+        return nullptr;
+    }
+    for (TreeItem *child : list->children()) {
+        const auto listItem = child->itemAs<MD::ListItem>();
+        if (!listItem || !listItem->isTaskList()) {
+            return nullptr;
+        }
+    }
+    return list;
+}
+
+void CommandManager::makeTodoBlock(TreeItem *block)
+{
+    TreeItem *list = checklistForTodo(block);
+    if (!list || !m_model) {
+        return;
+    }
+    QString markdown;
+    list->withUnparsedApplied([&]() {
+        markdown = MDDataGenerator::toMd(list->item());
+    });
+    const auto todo = TodoBlock::makeBlock(markdown, 0);
+    if (!todo) {
+        return;
+    }
+    m_model->clearSelection();
+    pushCommand(new ParseBlockCommand(list, *todo, m_model));
 }
 
 void CommandManager::splitListItem(TreeItem *block, const QString &text, int splitIndex)

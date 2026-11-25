@@ -34,6 +34,8 @@ enum ElementType {
     HorizontalLine = 18,
     RawHtml = 19,
     Math = 20,
+    /// A to-do block (docs/todo.md), kept as its raw markdown.
+    Todo = 21,
 };
 Q_ENUM_NS(ElementType)
 

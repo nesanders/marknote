@@ -6,6 +6,7 @@
 
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
+import { findBlocks, dueInfo, localToday } from './todo.js';
 
 const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: false });
 
@@ -27,7 +28,7 @@ md.core.ruler.after('inline', 'marknote_tasks', (state) => {
         if (!m || !t.children?.length || t.children[0].type !== 'text') continue;
         t.children[0].content = t.children[0].content.replace(/^\[[ xX]\][ \t]/, '');
         const box = new state.Token('html_inline', '', 0);
-        const line = tokens[i - 2].map ? tokens[i - 2].map[0] : -1;
+        const line = tokens[i - 2].map ? tokens[i - 2].map[0] + (state.env?.lineOffset ?? 0) : -1;
         box.content = `<input type="checkbox" class="task" data-line="${line}"${m[1] === ' ' ? '' : ' checked'}> `;
         t.children.unshift(box);
         tokens[i - 2].attrJoin('class', 'task-item');
@@ -138,6 +139,56 @@ md.renderer.rules.fence = (tokens, idx) => {
     return `<pre class="code">${label}<code>${md.utils.escapeHtml(t.content)}</code></pre>\n`;
 };
 
+const esc = (t) => md.utils.escapeHtml(t);
+
+function dueChip(item, line, today) {
+    if (!item.due) {
+        return item.checked ? '' : `<button type="button" class="due-add" data-due-line="${line}" aria-label="Add due date" title="Add due date">📅</button>`;
+    }
+    const { label } = dueInfo(item.due, today);
+    const state = item.checked ? '' : dueInfo(item.due, today).state;
+    return `<button type="button" class="due-chip${state ? ' ' + state : ''}" data-due-line="${line}" data-due="${item.due}" title="Due ${item.due}">📅 ${esc(label)}</button>`;
+}
+
+function todoItem(item, today) {
+    const extra = item.extra.length ? md.render(item.extra.map((l) => l.replace(/^ {1,4}|^\t/, '')).join('\n'), { lineOffset: item.line + 1 }) : '';
+    const done = item.done ? `<span class="done-date" title="Completed ${item.done}">✓ ${esc(dueInfo(item.done, today).label)}</span>` : '';
+    return `<li class="task-item todo-item${item.checked ? ' checked' : ''}"><div class="todo-row">`
+        + `<input type="checkbox" class="task" data-line="${item.line}"${item.checked ? ' checked' : ''}> `
+        + `<span class="todo-text">${md.renderInline(item.text)}</span>${dueChip(item, item.line, today)}${done}</div>${extra}</li>`;
+}
+
+/** HTML for one to-do block (docs/todo.md); data-line attributes point into the body. */
+function renderTodo(block, today) {
+    const sort = block.options.sort === 'due';
+    let html = `<div class="todo-block" data-todo-line="${block.start}">`
+        + `<div class="todo-head"><button type="button" class="todo-sort" data-todo-sort="${sort ? 'manual' : 'due'}" data-line="${block.start}" `
+        + `title="Change the order">${sort ? 'By due date' : 'Manual order'}</button></div>`
+        + `<ul class="todo-list">${block.open.map((it) => todoItem(it, today)).join('')}</ul>`
+        + `<input type="text" class="todo-new" data-todo-add="${block.start}" placeholder="Add item" aria-label="Add item" enterkeyhint="done">`;
+    if (block.done.length) {
+        html += `<details class="todo-done" data-done-line="${block.start}"><summary>Done (${block.done.length})</summary>`
+            + `<ul class="todo-list">${block.done.map((it) => todoItem(it, today)).join('')}</ul></details>`;
+    }
+    return html + '</div>\n';
+}
+
+/** Renders the body, with to-do blocks drawn by renderTodo and the rest by markdown-it. */
+function renderWithTodos(body, today = localToday()) {
+    const blocks = findBlocks(body);
+    if (!blocks.length) return md.render(body);
+    const lines = body.split('\n');
+    let html = '';
+    let at = 0;
+    for (const b of blocks) {
+        if (b.start > at) html += md.render(lines.slice(at, b.start).join('\n'), { lineOffset: at });
+        html += renderTodo(b, today);
+        at = b.end;
+    }
+    if (at < lines.length) html += md.render(lines.slice(at).join('\n'), { lineOffset: at });
+    return html;
+}
+
 let hooked = false;
 
 export function renderMarkdown(body) {
@@ -155,7 +206,7 @@ export function renderMarkdown(body) {
         });
         hooked = true;
     }
-    return DOMPurify.sanitize(md.render(body), { ADD_ATTR: ['data-line', 'target', 'data-src', 'data-tex', 'loading'], FORBID_TAGS: ['style', 'form'] });
+    return DOMPurify.sanitize(renderWithTodos(body), { ADD_ATTR: ['data-line', 'target', 'data-src', 'data-tex', 'loading'], FORBID_TAGS: ['style', 'form'] });
 }
 
 /** Toggle the checkbox of the list item starting at a body line. */
@@ -168,5 +219,5 @@ export function toggleTask(body, line, checked) {
 
 /** Unsanitized HTML, for tests. */
 export function renderUnsafeForTests(body) {
-    return md.render(body);
+    return renderWithTodos(body, '2026-11-25');
 }

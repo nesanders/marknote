@@ -1,0 +1,110 @@
+{
+  "about": "Shared to-do block cases (docs/todo.md), run by web/test/todo.test.js and src/autotests/todotest.cpp. Lines are 0-based.",
+  "cases": [
+    {
+      "name": "check moves to top of Done with today's date",
+      "today": "2026-11-25",
+      "input": "# Trip\n\n<!-- marknote-todo -->\n- [ ] Book flights\n- [ ] Pack charger\n\nAfter",
+      "op": { "type": "toggle", "line": 4 },
+      "expected": "# Trip\n\n<!-- marknote-todo -->\n- [ ] Book flights\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] Pack charger ✅ 2026-11-25\n\n</details>\n\nAfter"
+    },
+    {
+      "name": "second check goes above the first",
+      "today": "2026-11-26",
+      "input": "<!-- marknote-todo -->\n- [ ] Book flights\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] Pack charger ✅ 2026-11-25\n\n</details>",
+      "op": { "type": "toggle", "line": 1 },
+      "expected": "<!-- marknote-todo -->\n\n<details>\n<summary>Done (2)</summary>\n\n- [x] Book flights ✅ 2026-11-26\n- [x] Pack charger ✅ 2026-11-25\n\n</details>"
+    },
+    {
+      "name": "uncheck moves to bottom of open list and drops the done date, keeps the due date",
+      "today": "2026-11-26",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] C 📅 2026-12-01 ✅ 2026-11-25\n\n</details>\n",
+      "op": { "type": "toggle", "line": 7 },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B\n- [ ] C 📅 2026-12-01\n"
+    },
+    {
+      "name": "due date kept on completion; sub-notes travel with the item",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] Renew passport 📅 2026-12-01\n  Photo booth on Main St\n- [ ] Other",
+      "op": { "type": "toggle", "line": 2 },
+      "expected": "<!-- marknote-todo -->\n- [ ] Other\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] Renew passport 📅 2026-12-01 ✅ 2026-11-25\n  Photo booth on Main St\n\n</details>"
+    },
+    {
+      "name": "set a due date",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B",
+      "op": { "type": "due", "line": 2, "date": "2026-12-24" },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B 📅 2026-12-24"
+    },
+    {
+      "name": "clear a due date",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] A 📅 2026-12-24",
+      "op": { "type": "due", "line": 1, "date": null },
+      "expected": "<!-- marknote-todo -->\n- [ ] A"
+    },
+    {
+      "name": "sort by due date: earliest first, undated last, stable",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] No date 1\n- [ ] Late 📅 2026-12-30\n- [ ] No date 2\n- [ ] Soon 📅 2026-11-28",
+      "op": { "type": "sort", "line": 0, "sort": "due" },
+      "expected": "<!-- marknote-todo sort=due -->\n- [ ] Soon 📅 2026-11-28\n- [ ] Late 📅 2026-12-30\n- [ ] No date 1\n- [ ] No date 2"
+    },
+    {
+      "name": "in a due-sorted block, a new due date re-sorts",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo sort=due -->\n- [ ] Soon 📅 2026-11-28\n- [ ] Undated",
+      "op": { "type": "due", "line": 2, "date": "2026-11-26" },
+      "expected": "<!-- marknote-todo sort=due -->\n- [ ] Undated 📅 2026-11-26\n- [ ] Soon 📅 2026-11-28"
+    },
+    {
+      "name": "back to manual keeps the current order",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo sort=due -->\n- [ ] Soon 📅 2026-11-28\n- [ ] Undated",
+      "op": { "type": "sort", "line": 0, "sort": "manual" },
+      "expected": "<!-- marknote-todo -->\n- [ ] Soon 📅 2026-11-28\n- [ ] Undated"
+    },
+    {
+      "name": "items ticked by hand are moved to Done and stamped",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [x] Typed done\n- [ ] A\n- [ ] B",
+      "op": { "type": "toggle", "line": 2 },
+      "expected": "<!-- marknote-todo -->\n- [ ] B\n\n<details>\n<summary>Done (2)</summary>\n\n- [x] Typed done ✅ 2026-11-25\n- [x] A ✅ 2026-11-25\n\n</details>"
+    },
+    {
+      "name": "add an item",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n\nText",
+      "op": { "type": "add", "line": 0, "text": "New" },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n- [ ] New\n\nText"
+    },
+    {
+      "name": "two blocks in one note are independent",
+      "today": "2026-11-25",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n\n## Work\n\n<!-- marknote-todo -->\n- [ ] W1\n- [ ] W2",
+      "op": { "type": "toggle", "line": 6 },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n\n## Work\n\n<!-- marknote-todo -->\n- [ ] W2\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] W1 ✅ 2026-11-25\n\n</details>"
+    },
+    {
+      "name": "a checklist outside a block is just toggled in place",
+      "today": "2026-11-25",
+      "input": "- [ ] A\n- [ ] B\n\n<!-- marknote-todo -->\n- [ ] C",
+      "op": { "type": "toggle", "line": 0 },
+      "expected": "- [x] A\n- [ ] B\n\n<!-- marknote-todo -->\n- [ ] C"
+    },
+    {
+      "name": "markers inside code fences are ignored",
+      "today": "2026-11-25",
+      "input": "```\n<!-- marknote-todo -->\n- [ ] A\n```",
+      "op": { "type": "toggle", "line": 2 },
+      "expected": "```\n<!-- marknote-todo -->\n- [x] A\n```"
+    },
+    {
+      "name": "make a to-do block from an existing checklist",
+      "today": "2026-11-25",
+      "input": "Intro\n\n- [ ] A\n- [x] B\n- [ ] C\n\nEnd",
+      "op": { "type": "make", "line": 4 },
+      "expected": "Intro\n\n<!-- marknote-todo -->\n- [ ] A\n- [ ] C\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] B ✅ 2026-11-25\n\n</details>\n\nEnd"
+    }
+  ]
+}

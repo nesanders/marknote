@@ -13,6 +13,7 @@ import { tags as t } from '@lezer/highlight';
 import { livePreview } from './livepreview.js';
 import { slashSource } from './slash.js';
 import { blockHandles } from './blockhandles.js';
+import { todoBlocks } from './todoedit.js';
 
 const markdownStyle = HighlightStyle.define([
     { tag: t.heading1, fontWeight: '700', fontSize: '1.45em' },
@@ -111,7 +112,7 @@ export function Editor({ value, onChange, viewRef, autoFocus, live = true, resol
     const resolveRef = useRef(resolveImage);
     resolveRef.current = resolveImage;
     const mode = useRef(new Compartment());
-    const preview = () => (live ? [livePreview((src) => resolveRef.current?.(src) ?? Promise.resolve({ missing: src })), EditorView.editorAttributes.of({ class: 'cm-live' })] : [EditorView.editorAttributes.of({ class: 'cm-source' })]);
+    const preview = () => (live ? [livePreview((src) => resolveRef.current?.(src) ?? Promise.resolve({ missing: src })), todoBlocks(), EditorView.editorAttributes.of({ class: 'cm-live' })] : [EditorView.editorAttributes.of({ class: 'cm-source' })]);
 
     useEffect(() => {
         const slashData = [{ autocomplete: slashSource(() => imageRef.current?.()) }];

@@ -27,6 +27,7 @@ Popup {
         { group: i18n("Lists"), md: "-", name: i18n("Bullet List"), type: "unordered_list", icon: "format-list-unordered", description: i18n("Unordered bulleted list") },
         { group: i18n("Lists"), md: "1.", name: i18n("Numbered List"), type: "ordered_list", icon: "format-list-ordered", description: i18n("Numbered sequential list") },
         { group: i18n("Lists"), md: "- [ ]", name: i18n("Checklist"), type: "task_list", icon: "view-list-details", description: i18n("Task list with checkboxes") },
+        { group: i18n("Lists"), md: "todo", name: i18n("To-do list"), type: "todo", icon: "checkbox", description: i18n("Checklist with due dates and a Done section") },
         { group: i18n("Blocks"), md: ">", name: i18n("Quote"), type: "blockquote", icon: "format-text-blockquote", description: i18n("Quote or callout block") },
         { group: i18n("Blocks"), md: "```", name: i18n("Code Block"), type: "code", icon: "code-context", description: i18n("Code snippet with syntax") },
         { group: i18n("Blocks"), md: "```mermaid", name: i18n("Mermaid Diagram"), type: "mermaid", icon: "view-preview", description: i18n("Flowchart, sequence, or architecture diagram") },
