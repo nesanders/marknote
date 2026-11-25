@@ -45,6 +45,15 @@ nothing is saved).
   Move down. List items take their sub-items along.
 - **Manual order** (Settings › Sort notes › Manual): drag a note above or below another;
   the order is the same as on the desktop.
+- **Links to notes:** the address bar always shows the open note's link,
+  `…/marknote/?note=<id>&nb=<notebook>`, ready to copy (or *Copy Link* in the note
+  menu). The id is the random one in the note's front matter, so a link keeps
+  working when the note is renamed or moved, and says nothing about its title. A note
+  without one gets it the first time it is opened. Opening a link needs the same
+  Google account; a note in an encrypted notebook opens after you unlock it.
+- **To-do blocks** (`/todo`, or the + menu): ticked items move to a collapsible Done
+  section with the date; due dates with a picker; ordered by hand or by due date
+  (see [docs/todo.md](../docs/todo.md)).
 - **Show in Google Drive** on notes, folders and notebooks opens them on drive.google.com,
   to share them with Google's own Share dialog.
 - New note / folder, rename, move, delete (to the Drive trash), set icon, edit tags,

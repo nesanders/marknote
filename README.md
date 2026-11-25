@@ -129,7 +129,8 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 - An installable web app (PWA) for Android and iPhone that opens the same notebooks from
   Google Drive: tree with drag and drop, tags, filter, icons, notes with math, Mermaid
   diagrams and images, a live-preview Markdown editor with a `/` menu, to-do blocks,
-  block handles to drag (or tap to move) paragraphs, list items and other blocks, photo upload,
+  block handles to drag (or tap to move) paragraphs, list items and other blocks, links to
+  notes in the address bar (by the note's random id, not its title), photo upload,
   an offline copy with edits uploaded later, conflict copies instead of overwrites, and
   encrypted notebooks (unlock, read, edit). Try it with `?demo` (its “Private” notebook is
   encrypted, password `demo password`); setup is in [web/README.md](web/README.md).

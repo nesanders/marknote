@@ -577,6 +577,17 @@ export class Library extends EventTarget {
         }
     }
 
+    /** The note whose front-matter id is `noteId` (links use it), or null. */
+    findByNoteId(noteId) {
+        for (const item of this.items.values()) if (!item.isFolder && item.noteId === noteId) return item;
+        return null;
+    }
+
+    /** Whether some notes cannot be read until the notebook is unlocked. */
+    hasLockedNotes() {
+        return [...this.items.values()].some((i) => !i.isFolder && this.isLockedNote(i.id));
+    }
+
     applyMeta(item) {
         const text = this.texts.get(item.id);
         if (text === undefined) return;

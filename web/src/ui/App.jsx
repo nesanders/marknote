@@ -16,6 +16,37 @@ import { Tree } from './Tree.jsx';
 const DEMO = new URLSearchParams(location.search).has('demo');
 const README = 'https://github.com/nesanders/marknote/blob/master/web/README.md';
 
+// ---- Links to notes ----------------------------------------------------------
+// ?note=<the note's front-matter id>&nb=<notebook id>: stable across renames and
+// moves, and says nothing about the note's title or place. The address bar
+// always shows the open note's link, so it can be copied from there.
+const LINK_KEY = 'marknote.link';
+
+/** A link this page was opened with; kept over a sign-in redirect (which drops the query). */
+function incomingLink() {
+    const p = new URLSearchParams(location.search);
+    try {
+        if (p.get('note')) {
+            const link = { note: p.get('note'), nb: p.get('nb') ?? '' };
+            sessionStorage.setItem(LINK_KEY, JSON.stringify(link));
+            return link;
+        }
+        return JSON.parse(sessionStorage.getItem(LINK_KEY) ?? 'null');
+    } catch {
+        return null;
+    }
+}
+const INCOMING_LINK = incomingLink();
+
+/** The address of a note, from its front-matter id. */
+export function noteUrl(noteId, notebookId) {
+    const p = new URLSearchParams(location.search);
+    p.set('note', noteId);
+    if (notebookId) p.set('nb', notebookId);
+    else p.delete('nb');
+    return `${location.origin}${location.pathname}?${p}`;
+}
+
 function useWide() {
     const query = '(min-width: 900px)';
     const [wide, setWide] = useState(() => matchMedia(query).matches);
@@ -233,6 +264,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
     const [screen, setScreen] = useState('notebooks'); // narrow layout: notebooks | tree | note
     const [notebook, setNotebook] = useState(null);
     const [noteId, setNoteId] = useState(null);
+    const [link, setLink] = useState(INCOMING_LINK); // a note link still to open
     const [editing, setEditing] = useState(false);
     const [dialog, setDialog] = useState(null);
     const [toasts, setToasts] = useState([]);
@@ -307,17 +339,21 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
                 toast(e.message, 'error');
             }
             setLoading(false);
-            const last = library.notebooks.find((n) => n.id === settings.lastNotebook) ?? (wide ? library.notebooks[0] : null);
+            const linkedNb = link && library.notebooks.find((n) => n.id === link.nb);
+            const last = linkedNb ?? library.notebooks.find((n) => n.id === settings.lastNotebook) ?? (wide || link ? library.notebooks[0] : null);
             if (last) {
                 await openNotebook(last, { keepNote: true });
-                if (settings.lastNote && library.items.has(settings.lastNote)) {
-                    setNoteId(settings.lastNote);
+                const linked = link ? await openLink(link, last) : false;
+                if (linked === true) {
+                    // the linked note is open
+                } else if (linked === 'waiting') {
                     if (!wide) {
                         history.replaceState({ screen: 'notebooks' }, '');
                         history.pushState({ screen: 'tree' }, '');
-                        history.pushState({ screen: 'note' }, '');
-                        setScreen('note');
+                        setScreen('tree');
                     }
+                } else if (settings.lastNote && library.items.has(settings.lastNote)) {
+                    showNote(settings.lastNote);
                 } else if (!wide) {
                     history.replaceState({ screen: 'notebooks' }, '');
                     history.pushState({ screen: 'tree' }, '');
@@ -327,14 +363,103 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
         })();
     }, [library, settings.rootPath, settings.extraNotebooks.join('\n')]);
 
+    const note = noteId ? library.items.get(noteId) : null;
+
+    /** Shows a note at start-up (on phones: notebooks › tree › note, so Back works). */
+    const showNote = (id) => {
+        setNoteId(id);
+        if (!wide) {
+            history.replaceState({ screen: 'notebooks' }, '');
+            history.pushState({ screen: 'tree' }, '');
+            history.pushState({ screen: 'note' }, '');
+            setScreen('note');
+        }
+    };
+
+    const doneWithLink = () => {
+        setLink(null);
+        try {
+            sessionStorage.removeItem(LINK_KEY);
+        } catch {
+            // private mode
+        }
+    };
+
+    /**
+     * Opens a linked note: in the open notebook, else in the others. A note in
+     * a locked notebook waits for the unlock (see the effect below).
+     */
+    const openLink = async (l, opened) => {
+        let item = library.findByNoteId(l.note);
+        if (!item && library.hasLockedNotes()) {
+            setLink({ ...l, waiting: true });
+            setDialog(<UnlockDialog library={library} name={opened.name} onClose={() => setDialog(null)} />);
+            return 'waiting';
+        }
+        for (const nb of library.notebooks) {
+            if (item) break;
+            if (nb === opened) continue;
+            await openNotebook(nb, { keepNote: true });
+            item = library.findByNoteId(l.note);
+        }
+        doneWithLink();
+        if (!item) {
+            toast('The linked note was not found. It may have been deleted, or be in a notebook that is not added here.', 'warning');
+            return false;
+        }
+        showNote(item.id);
+        return true;
+    };
+
+    // A link into a locked notebook: open the note once it is unlocked.
+    useEffect(() => {
+        if (!link?.waiting || !notebook) return;
+        const item = library.findByNoteId(link.note);
+        if (item) {
+            doneWithLink();
+            showNote(item.id);
+        }
+    }, [rev, link]);
+
+    // Every note gets a stable id (as the desktop app does when it saves), so it can be linked.
+    useEffect(() => {
+        if (!note || note.isFolder || note.noteId || library.isLockedNote(note.id) || library.text(note.id) === undefined) return;
+        library.editFrontMatter(note.id, (raw) => raw).catch(() => {});
+    }, [noteId, rev]);
+
+    // The address bar shows the open note's link.
+    useEffect(() => {
+        if (link) return; // still opening one
+        const p = new URLSearchParams(location.search);
+        if (note && !note.isFolder && note.noteId) {
+            p.set('note', note.noteId);
+            p.set('nb', notebook?.id ?? '');
+        } else {
+            p.delete('note');
+            p.delete('nb');
+        }
+        const url = location.pathname + (p.size ? `?${p}` : '');
+        if (url !== location.pathname + location.search) history.replaceState(history.state, '', url);
+    }, [noteId, note?.noteId, notebook?.id, link]);
+
+    const copyLink = async (item) => {
+        try {
+            if (!item.noteId) await library.editFrontMatter(item.id, (raw) => raw);
+            await navigator.clipboard.writeText(noteUrl(item.noteId, notebook?.id));
+            toast('Link copied');
+        } catch (e) {
+            toast(`Could not copy the link: ${e.message}`, 'error');
+        }
+    };
+
     const openNote = (item) => {
+        if (link) doneWithLink(); // picking a note yourself replaces a link still waiting
         setNoteId(item.id);
         setEditing(false);
         setSettings((s) => ({ ...s, lastNote: item.id }));
         go('note');
     };
 
-    const note = noteId ? library.items.get(noteId) : null;
     const visible = useMemo(() => library.filter({ text: filterText, tags: filterTags, any: settings.tagAny, contents: settings.searchContents }),
         [rev, filterText, filterTags.join('\n'), settings.tagAny, settings.searchContents]);
     const tags = useMemo(() => library.tagCounts(), [rev]);
@@ -450,6 +575,7 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             { label: 'Move…', icon: 'move', action: () => move(item), disabled: !library.online || item.pending },
             { label: 'Set Icon…', icon: 'smile', action: () => pickIcon(item) },
             { label: 'Edit Tags…', icon: 'tag', action: () => editTags(item) },
+            { label: 'Copy Link', icon: 'link', action: () => copyLink(item), disabled: library.isLockedNote(item.id) },
             showInDrive(item.id, false),
             { separator: true },
             { label: 'Delete Note…', icon: 'trash', danger: true, action: () => remove(item), disabled: !library.online && !item.id.startsWith('local-') },

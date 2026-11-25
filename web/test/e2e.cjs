@@ -520,6 +520,61 @@ async function demoBlockMenu(browser, errors) {
     await ctx.close();
 }
 
+async function demoLinks(browser, errors) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(BASE).origin });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Trip to Lisbon")');
+    await page.waitForFunction(() => /[?&]note=01DEMO/.test(location.search));
+    const tripUrl = page.url();
+    assert.match(tripUrl, /[?&]demo/);
+    assert.match(tripUrl, /[?&]nb=/);
+    assert.doesNotMatch(tripUrl, /Trip|Lisbon/);
+    // A note without an id gets one when opened, and the address follows it.
+    await page.click('.row:has-text("Scratch")');
+    await page.waitForFunction(() => /[?&]note=(?!01DEMO)[0-9A-HJKMNP-TV-Z]{26}/.test(location.search));
+    const scratchUrl = page.url();
+    // Copy Link from the note menu.
+    await page.getByRole('button', { name: 'Note actions' }).click();
+    await page.click('.sheet-item:has-text("Copy Link")');
+    await page.waitForSelector('.toast:has-text("Link copied")');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), scratchUrl);
+
+    // Opening the link in a fresh page shows that note (demo data is the same each time).
+    const page2 = await ctx.newPage();
+    watch(page2, errors);
+    await page2.goto(tripUrl);
+    await page2.waitForSelector('.note-title:has-text("Trip to Lisbon")');
+    assert.equal(page2.url(), tripUrl);
+    // Without the notebook part, the note is found by searching the notebooks.
+    await page2.goto(tripUrl.replace(/&?nb=[^&]*/, ''));
+    await page2.waitForSelector('.note-title:has-text("Trip to Lisbon")');
+    // An unknown note says so.
+    await page2.goto(BASE + '?demo&note=01ZZZZZZZZZZZZZZZZZZZZZZZZ');
+    await page2.waitForSelector('.toast:has-text("linked note was not found")');
+    // A note in an encrypted notebook: unlock, then it opens.
+    await page2.goto(BASE + '?demo&note=01DEMOPRIVATE0000000000002');
+    await page2.waitForSelector('.dialog input[type=password]');
+    await page2.fill('.dialog input[type=password]', 'demo password');
+    await page2.keyboard.press('Enter');
+    await page2.waitForSelector('.note-title:has-text("Gift ideas")');
+    await shot(page2, 'link-encrypted-opened');
+
+    // On a phone, Back from a linked note goes to its folder tree.
+    const phone = await browser.newContext({ ...devices['Pixel 7'] });
+    const p3 = await phone.newPage();
+    watch(p3, errors);
+    await p3.goto(tripUrl);
+    await p3.waitForSelector('.note-title:has-text("Trip to Lisbon")');
+    await p3.goBack();
+    await p3.waitForSelector('.tree .row:has-text("Trip to Lisbon")');
+    await phone.close();
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -686,7 +741,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo note links', demoLinks], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {
