@@ -14,6 +14,7 @@ const BLOCKS = [
     ['Bulleted list', 'Lists', '-', '- |'],
     ['Numbered list', 'Lists', '1.', '1. |'],
     ['Checklist', 'Lists', '- [ ]', '- [ ] |'],
+    ['To-do list', 'Lists', 'with Done', '<!-- marknote-todo -->\n- [ ] |'],
     ['Code block', 'Blocks', '```', '```\n|\n```'],
     ['Table', 'Blocks', '|', '| Column | Column |\n| --- | --- |\n| | |'],
     ['Divider', 'Blocks', '---', '---\n|'],
