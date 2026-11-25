@@ -159,6 +159,7 @@ Controls.MenuBar {
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Heading 3"); icon.name: "format-text-heading"; onTriggered: root.insert("heading3") }
         Controls.MenuSeparator {}
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Checklist"); icon.name: "checkbox"; onTriggered: root.insert("task_list") }
+        Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "To-Do List"); icon.name: "checkbox"; onTriggered: root.insert("todo") }
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Bulleted List"); icon.name: "format-list-unordered"; onTriggered: root.insert("unordered_list") }
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Numbered List"); icon.name: "format-list-ordered"; onTriggered: root.insert("ordered_list") }
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Quote"); icon.name: "format-text-blockquote"; onTriggered: root.insert("blockquote") }

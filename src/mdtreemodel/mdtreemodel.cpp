@@ -233,6 +233,17 @@ void MDTreeModel::setTableCellMD(TreeItem *block, int row, int col, const QStrin
     }
 }
 
+void MDTreeModel::setTodoMD(TreeItem *block, const QString &markdown)
+{
+    if (!block || block->todoMarkdown().isNull()) {
+        return;
+    }
+    block->setTodoMarkdown(markdown);
+    if (block->parent()) {
+        childModified(block->parent(), block->row(), block->row());
+    }
+}
+
 void MDTreeModel::setItemCode(TreeItem *block, const QString &code, const QString &lang)
 {
     if (block->type() != MDOptions::ElementType::Code) {

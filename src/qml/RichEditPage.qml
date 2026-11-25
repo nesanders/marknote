@@ -688,6 +688,9 @@ EditPage {
         case "table":
             CommandManager.parseBlock(newBlock, "|  |  |  |\n| --- | --- | --- |\n|  |  |  |");
             break;
+        case "todo":
+            CommandManager.parseBlock(newBlock, TodoHelper.newBlock());
+            break;
         }
     }
 

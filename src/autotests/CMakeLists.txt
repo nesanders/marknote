@@ -96,3 +96,10 @@ ecm_add_test(ordertest.cpp
     LINK_LIBRARIES marknote_static Qt::Test
     NAME_PREFIX "marknote-"
 )
+
+ecm_add_test(todotest.cpp
+    TEST_NAME todotest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)
+target_compile_definitions(todotest PRIVATE TODO_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/data/todo.json")

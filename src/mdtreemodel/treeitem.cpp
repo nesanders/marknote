@@ -3,10 +3,15 @@
 
 #include "treeitem.h"
 #include "mddatagenerator.h"
+#include "todoblock.h"
 #include <QFileInfo>
 #include <md4qt/html.h>
 #include <md4qt/parser.h>
 using namespace Qt::StringLiterals;
+
+// Marks the raw items groupTodoBlocks made (a lone marker comment is not one).
+// Raw HTML has no text style options of its own, so a high bit is free.
+static constexpr int s_todoBlockOpt = 1 << 24;
 
 TreeItem::TreeItem(QSharedPointer<MD::Document> doc, TreeItem *parent, QObject *parentObject)
     : QObject(parent ? parent : parentObject)
@@ -173,6 +178,7 @@ QList<TreeItem *> TreeItem::fromMarkdown(const QString &markdown, QSharedPointer
     }
 
     auto tmpDoc = parser.parse(stream, path, fileName);
+    groupTodoBlocks(tmpDoc, markdown);
 
     QList<TreeItem *> items;
     for (const auto &item : tmpDoc->items()) {
@@ -184,6 +190,73 @@ QList<TreeItem *> TreeItem::fromMarkdown(const QString &markdown, QSharedPointer
     }
 
     return items;
+}
+
+void TreeItem::groupTodoBlocks(const QSharedPointer<MD::Document> &doc, const QString &markdown)
+{
+    if (!doc || !markdown.contains(u"marknote-todo"_s)) {
+        return;
+    }
+    const auto blocks = TodoBlock::findBlocks(markdown);
+    if (blocks.isEmpty()) {
+        return;
+    }
+    const QStringList lines = markdown.split(u'\n');
+
+    qsizetype i = 0;
+    for (const auto &block : blocks) {
+        const auto &items = doc->items();
+        while (i < items.size() && (items.at(i)->type() == MD::ItemType::Anchor || items.at(i)->startLine() < block.start)) {
+            ++i;
+        }
+        if (i >= items.size() || items.at(i)->startLine() != block.start || items.at(i)->type() != MD::ItemType::RawHtml) {
+            continue;
+        }
+        qsizetype j = i;
+        while (j < items.size() && items.at(j)->type() != MD::ItemType::Anchor && items.at(j)->startLine() < block.end) {
+            ++j;
+        }
+        // Something that starts inside the block runs on past its end (text
+        // right after </details>, a lazy continuation line): leave it alone.
+        // Lists end after the blank line that follows them.
+        bool runsOn = false;
+        for (qsizetype k = block.end; k <= items.at(j - 1)->endLine() && k < lines.size(); ++k) {
+            runsOn = runsOn || !lines.at(k).trimmed().isEmpty();
+        }
+        if (runsOn) {
+            continue;
+        }
+
+        auto raw = QSharedPointer<MD::RawHtml>::create();
+        raw->setText(lines.mid(block.start, block.end - block.start).join(u'\n'));
+        raw->setOpts(s_todoBlockOpt);
+        raw->setStartColumn(0);
+        raw->setStartLine(block.start);
+        raw->setEndLine(block.end - 1);
+        raw->setEndColumn(qMax<qsizetype>(0, lines.at(block.end - 1).size() - 1));
+        for (qsizetype k = j - 1; k >= i; --k) {
+            doc->removeItemAt(k);
+        }
+        doc->insertItem(i, raw);
+        ++i;
+    }
+}
+
+QString TreeItem::todoMarkdown() const
+{
+    const auto raw = m_item.dynamicCast<MD::RawHtml>();
+    if (!raw || !(raw->opts() & s_todoBlockOpt)) {
+        return QString();
+    }
+    return raw->text();
+}
+
+void TreeItem::setTodoMarkdown(const QString &markdown)
+{
+    if (const auto raw = m_item.dynamicCast<MD::RawHtml>()) {
+        raw->setText(markdown);
+        Q_EMIT dataChanged();
+    }
 }
 
 TreeItem *TreeItem::child(int childRow)
@@ -248,6 +321,14 @@ QVariantMap TreeItem::data() const
     case MD::ItemType::HorizontalLine:
         map = MDDataGenerator::fromHorizontalLine(m_item);
         break;
+    case MD::ItemType::RawHtml: {
+        const QString todo = todoMarkdown();
+        if (!todo.isNull()) {
+            map[u"type"_s] = QVariant::fromValue(MDOptions::ElementType::Todo);
+            map[u"todo"_s] = todo;
+        }
+        break;
+    }
     default:
         break;
     }

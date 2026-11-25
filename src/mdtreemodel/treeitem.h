@@ -57,6 +57,14 @@ public:
     static QSharedPointer<MD::Item> createMDItem(MDOptions::ElementType type, const QString &text = QString());
     static TreeItem *createTreeItem(MDOptions::ElementType type, QSharedPointer<MD::Document> doc, const QString &text = QString());
     static QList<TreeItem *> fromMarkdown(const QString &markdown, QSharedPointer<MD::Document> doc);
+    /// Replace the items that make up each to-do block (marker, lists, Done
+    /// section) at the top of @p doc, parsed from @p markdown, with one raw
+    /// item holding the block's text, so it is written back verbatim.
+    static void groupTodoBlocks(const QSharedPointer<MD::Document> &doc, const QString &markdown);
+
+    /// The markdown of a to-do block, or a null string for other blocks.
+    QString todoMarkdown() const;
+    void setTodoMarkdown(const QString &markdown);
 
     bool isParsed() const;
     void setUnparsedMarkdown(const QString &text);
