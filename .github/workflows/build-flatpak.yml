@@ -9,6 +9,10 @@ on:
       - 'feature/**'
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+  pages: read # where GitHub Pages is served (a custom domain is used as is)
+
 jobs:
   flatpak-build:
     name: Build marknote.flatpak
@@ -72,6 +76,9 @@ jobs:
         env:
           GPG_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
           IS_MASTER: ${{ github.ref == 'refs/heads/master' }}
+          GH_TOKEN: ${{ github.token }}
+          # Optional override (Settings › Variables): the site's base URL.
+          PAGES_URL: ${{ vars.PAGES_URL }}
         run: |
           set -euo pipefail
           sudo apt-get install -y ostree
@@ -111,12 +118,21 @@ jobs:
           for ref in $(ostree refs --repo=flatpak-repo | grep "^app/$APP\.Locale/\|^runtime/$APP\.Locale/" || true); do
             flatpak build-sign flatpak-repo "$(echo "$ref" | cut -d/ -f2)" master --runtime --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
           done
+          # Static deltas: a first install fetches a few large files instead of
+          # hundreds of small objects (GitHub Pages answers bursts with 503).
           flatpak build-update-repo flatpak-repo --prune --default-branch=master \
+            --generate-static-deltas \
             --title="Marknote (${GITHUB_REPOSITORY_OWNER})" \
             --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
 
-          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
-          BASE="https://${OWNER}.github.io/${GITHUB_REPOSITORY#*/}/flatpak"
+          # The address Pages really serves (custom domain included), so
+          # clients are never redirected for each file.
+          SITE="${PAGES_URL:-$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq 'if (.https_enforced or .https_certificate.state == "approved") then (.html_url | sub("^http:"; "https:")) else .html_url end' 2>/dev/null || true)}"
+          if [ -z "$SITE" ]; then
+            SITE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
+          fi
+          BASE="${SITE%/}/flatpak"
+          echo "Repository URL: ${BASE}/repo/"
           KEY=$(gpg --export "$KEY_ID" | base64 -w0)
           mkdir -p site/flatpak
           mv flatpak-repo site/flatpak/repo
@@ -131,19 +147,20 @@ jobs:
           du -sh site/flatpak
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Check the repository is installable
+      - name: Check the repository installs (as a user would)
         if: steps.repo.outputs.ready == 'true'
         run: |
           set -euo pipefail
-          # A fresh user installation, as a person would set it up.
-          export FLATPAK_USER_DIR="$(mktemp -d)"
-          flatpak remote-add --user --from check site/flatpak/marknote.flatpakrepo
-          # Serve the files over HTTP like GitHub Pages does.
+          # Serve the files over HTTP like GitHub Pages does, then really
+          # install from them (the KDE runtime is already here from Flathub).
           (cd site && python3 -m http.server 8099 >/dev/null 2>&1 &)
           sleep 2
+          flatpak remote-add --user --from check site/flatpak/marknote.flatpakrepo
           flatpak remote-modify --user check --url=http://127.0.0.1:8099/flatpak/repo/
-          flatpak remote-ls --user check
-          flatpak remote-ls --user check | grep -q io.github.nesanders.marknote
+          ls site/flatpak/repo/deltas >/dev/null && echo "Static deltas: $(find site/flatpak/repo/deltas -type f | wc -l) files"
+          flatpak install --user -y --noninteractive check io.github.nesanders.marknote
+          flatpak info --user io.github.nesanders.marknote
+          grep -E '^(Url|Title)=' site/flatpak/marknote.flatpakref
 
       - name: Upload the repository for GitHub Pages
         if: steps.repo.outputs.ready == 'true'
