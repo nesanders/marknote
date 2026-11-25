@@ -12,6 +12,11 @@ the app to tick items off.)
   together and too close to their parent compared with desktop (desktop: more
   indent and more vertical room per row). Match desktop's indent and row
   spacing for indented task items, in both the rendered view and the editor.
+- [ ] Attachments by drag and drop (web and desktop): dropping files onto the
+  note adds an attachment block at the drop/cursor position (one per file;
+  images keep going in as images). Also allow inserting an *empty* attachment
+  block ("Drop a file here, or click to choose") that a dropped file fills in.
+  Same encrypted-notebook question as File…; see docs/attachments.md.
 
 ## Done
 
