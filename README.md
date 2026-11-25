@@ -178,9 +178,14 @@ next to the official Marknote if you have that too. GitHub Actions publishes eve
 `master` to a signed Flatpak repository, so installs update like any other Flatpak:
 
 ```sh
-flatpak install --user https://nesanders.github.io/marknote/flatpak/marknote.flatpakref
+flatpak install --user https://nsanders.me/marknote/flatpak/marknote.flatpakref
 flatpak run io.github.nesanders.marknote
 ```
+
+(The GitHub Pages site of this repository is served at `nsanders.me`; the build writes
+whatever address Pages really uses into the repository files.) If you added the
+repository before it used that address, point it there once:
+`flatpak remote-modify --user marknote --url=https://nsanders.me/marknote/flatpak/repo/`
 
 Updates then come with `flatpak update` or Discover. (The KDE runtime comes from Flathub,
 which the command sets up if needed. The repository's key is in the `.flatpakref` file.)
