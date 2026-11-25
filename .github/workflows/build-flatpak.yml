@@ -127,7 +127,7 @@ jobs:
 
           # The address Pages really serves (custom domain included), so
           # clients are never redirected for each file.
-          SITE="${PAGES_URL:-$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url 2>/dev/null || true)}"
+          SITE="${PAGES_URL:-$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq 'if (.https_enforced or .https_certificate.state == "approved") then (.html_url | sub("^http:"; "https:")) else .html_url end' 2>/dev/null || true)}"
           if [ -z "$SITE" ]; then
             SITE="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
           fi
