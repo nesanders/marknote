@@ -7,6 +7,7 @@
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
 import { findBlocks, dueInfo, localToday } from './todo.js';
+import { parseAttachment } from './attachments.js';
 
 const md = new MarkdownIt({ html: false, linkify: true, typographer: false, breaks: false });
 
@@ -37,6 +38,21 @@ md.core.ruler.after('inline', 'marknote_tasks', (state) => {
 
 // html: false escapes raw HTML, but our own checkbox tokens must pass through.
 md.renderer.rules.html_inline = (tokens, idx) => tokens[idx].content;
+
+// Attachments (docs/attachments.md): a paragraph that is only "[📎 Name](file)"
+// becomes a placeholder that extras.enhance() turns into a card.
+md.core.ruler.after('inline', 'marknote_attachments', (state) => {
+    const tokens = state.tokens;
+    for (let i = 0; i + 2 < tokens.length; ++i) {
+        if (tokens[i].type !== 'paragraph_open' || tokens[i].hidden || tokens[i + 1].type !== 'inline' || tokens[i + 2].type !== 'paragraph_close') continue;
+        const att = parseAttachment(tokens[i + 1].content);
+        if (!att) continue;
+        const t = new state.Token('html_block', '', 0);
+        const line = tokens[i].map ? tokens[i].map[0] + (state.env?.lineOffset ?? 0) : -1;
+        t.content = `<div class="attachment" data-attachment="${md.utils.escapeHtml(att.href)}" data-name="${md.utils.escapeHtml(att.name)}" data-line="${line}">📎 ${md.utils.escapeHtml(att.name)}</div>\n`;
+        tokens.splice(i, 3, t);
+    }
+});
 
 // ---- Math: $inline$, $$display$$ (same syntax md4qt parses on desktop) ----
 
@@ -206,7 +222,7 @@ export function renderMarkdown(body) {
         });
         hooked = true;
     }
-    return DOMPurify.sanitize(renderWithTodos(body), { ADD_ATTR: ['data-line', 'target', 'data-src', 'data-tex', 'loading'], FORBID_TAGS: ['style', 'form'] });
+    return DOMPurify.sanitize(renderWithTodos(body), { ADD_ATTR: ['data-line', 'target', 'data-src', 'data-tex', 'loading', 'data-attachment', 'data-name'], FORBID_TAGS: ['style', 'form'] });
 }
 
 /** Toggle the checkbox of the list item starting at a body line. */

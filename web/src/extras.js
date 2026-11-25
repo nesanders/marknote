@@ -4,6 +4,8 @@
 // Rendering that needs large libraries, loaded only when a note uses it:
 // KaTeX for math, Mermaid for diagrams. Also fills in images.
 
+import { fillAttachmentCard } from './attachments.js';
+
 let katexPromise = null;
 let mermaidPromise = null;
 let mermaidTheme = '';
@@ -69,7 +71,7 @@ export async function renderMermaid(el, source) {
  * Fill in math, diagrams and images inside rendered HTML.
  * @param images (src) => Promise<{url}|{missing}> resolving an image link
  */
-export async function enhance(container, { images } = {}) {
+export async function enhance(container, { images, attachments } = {}) {
     const jobs = [];
     for (const el of container.querySelectorAll('.math[data-tex]:not([data-done])')) {
         el.dataset.done = '1';
@@ -91,6 +93,13 @@ export async function enhance(container, { images } = {}) {
                 span.textContent = `🖼 ${img.alt || r.missing || 'Image'} (not found in this notebook)`;
                 img.replaceWith(span);
             }
+        })());
+    }
+    for (const el of container.querySelectorAll('.attachment[data-attachment]:not([data-done])')) {
+        el.dataset.done = '1';
+        jobs.push((async () => {
+            const info = attachments ? await attachments(el.dataset.attachment).catch((e) => ({ missing: e.message })) : null;
+            fillAttachmentCard(el, el.dataset.name, info ?? { missing: el.dataset.attachment });
         })());
     }
     await Promise.all(jobs);

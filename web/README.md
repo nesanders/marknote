@@ -51,6 +51,11 @@ nothing is saved).
   working when the note is renamed or moved, and says nothing about its title. A note
   without one gets it the first time it is opened. Opening a link needs the same
   Google account; a note in an encrypted notebook opens after you unlock it.
+- **File attachments** (`/` › *File…*, or the + menu): any file is uploaded next to the
+  note and shown as a card with its type and size; tap it to open the file on Google
+  Drive (preview, download, share), or use the download button. The note holds a plain
+  link, `[📎 Report.pdf](Report.pdf)` ([docs/attachments.md](../docs/attachments.md)).
+  In encrypted notebooks you are asked first: attachments are not encrypted.
 - **To-do blocks** (`/todo`, or the + menu): ticked items move to a collapsible Done
   section with the date; due dates with a picker; ordered by hand or by due date
   (see [docs/todo.md](../docs/todo.md)).

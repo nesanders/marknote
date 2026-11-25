@@ -5,7 +5,7 @@
 // files that Marknote created (desktop or web, same Google Cloud project).
 
 export const FOLDER = 'application/vnd.google-apps.folder';
-const FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,createdTime,parents';
+const FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,createdTime,parents,size';
 
 export class AuthError extends Error {}
 export class OfflineError extends Error {}

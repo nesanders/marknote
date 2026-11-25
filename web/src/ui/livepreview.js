@@ -13,6 +13,7 @@ import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import { renderMarkdown } from '../markdown.js';
 import { renderMath, renderMermaid } from '../extras.js';
 import { toggleInEditor } from './todoedit.js';
+import { parseAttachment, fillAttachmentCard } from '../attachments.js';
 
 // ---- widgets ----------------------------------------------------------------
 
@@ -68,7 +69,7 @@ class RenderedWidget extends WidgetType {
         this.extra = extra;
     }
     eq(other) {
-        return other.kind === this.kind && other.source === this.source && other.extra.display === this.extra.display;
+        return other.kind === this.kind && other.source === this.source && other.extra.display === this.extra.display && other.extra.name === this.extra.name;
     }
     toDOM(view) {
         const block = this.kind !== 'math' || this.extra.display;
@@ -90,6 +91,15 @@ class RenderedWidget extends WidgetType {
             el.innerHTML = renderMarkdown(this.source);
         } else if (this.kind === 'hr') {
             el.appendChild(document.createElement('hr'));
+        } else if (this.kind === 'attachment') {
+            el.title = '';
+            fillAttachmentCard(el, this.extra.name, {});
+            const resolve = this.extra.resolve;
+            Promise.resolve(resolve ? resolve(this.source) : { missing: this.source })
+                .then((info) => {
+                    fillAttachmentCard(el, this.extra.name, info);
+                    after();
+                }).catch(() => {});
         } else if (this.kind === 'image') {
             const img = document.createElement('img');
             img.alt = this.extra.alt ?? '';
@@ -107,6 +117,7 @@ class RenderedWidget extends WidgetType {
             }).catch(() => {});
         }
         el.addEventListener('mousedown', (e) => {
+            if (e.target.closest?.('a')) return; // an attachment's Drive or download link
             e.preventDefault();
             const pos = view.posAtDOM(el);
             view.dispatch({ selection: { anchor: Math.min(pos + (this.kind === 'hr' ? 0 : 1), view.state.doc.length) } });
@@ -114,8 +125,8 @@ class RenderedWidget extends WidgetType {
         });
         return el;
     }
-    ignoreEvent() {
-        return false;
+    ignoreEvent(event) {
+        return !!event.target.closest?.('a'); // links in an attachment card work as links
     }
 }
 
@@ -151,7 +162,7 @@ function findMath(text) {
     return out;
 }
 
-function build(state, resolveImage) {
+function build(state, resolveImage, resolveAttachment) {
     const decos = [];
     const add = (from, to, deco) => decos.push(deco.range(from, to));
     const active = activeLines(state);
@@ -188,6 +199,12 @@ function build(state, resolveImage) {
                 return;
             case 'Link': {
                 if (isActive(from)) return;
+                const ln = state.doc.lineAt(from);
+                const att = parseAttachment(ln.text);
+                if (att) {
+                    add(ln.from, ln.to, Decoration.replace({ widget: new RenderedWidget('attachment', att.href, { name: att.name, resolve: resolveAttachment }), block: true }));
+                    return false;
+                }
                 const marks = [];
                 let url = null;
                 for (let c = node.node.firstChild; c; c = c.nextSibling) {
@@ -318,12 +335,13 @@ function* visibleLines(state) {
 
 /**
  * The live preview extension. @param resolveImage (src) => Promise<{url}|{missing}>
+ * @param resolveAttachment (src) => Promise<Library.resolveAttachment result>
  */
-export function livePreview(resolveImage) {
+export function livePreview(resolveImage, resolveAttachment) {
     const field = StateField.define({
-        create: (state) => build(state, resolveImage),
+        create: (state) => build(state, resolveImage, resolveAttachment),
         update(value, tr) {
-            if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return build(tr.state, resolveImage);
+            if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return build(tr.state, resolveImage, resolveAttachment);
             return value;
         },
         provide: (f) => EditorView.decorations.from(f),

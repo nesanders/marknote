@@ -24,12 +24,13 @@ const BLOCKS = [
     ['Math', 'Blocks', '$$', '$$\n|\n$$'],
     ['Diagram (Mermaid)', 'Blocks', '```mermaid', '```mermaid\ngraph TD\n    A[Start] --> B[Next]|\n```'],
     ['Image…', 'Blocks', '![]()', null],
+    ['File…', 'Blocks', '📎', null],
 ];
 
 const SECTIONS = Object.fromEntries(['Text', 'Lists', 'Blocks'].map((name, rank) => [name, { name, rank }]));
-const KEYWORDS = { 'To-do list': 'todo task done due', Checklist: 'task todo checkbox', Divider: 'hr rule line', 'Diagram (Mermaid)': 'chart graph flow', Math: 'latex equation tex' };
+const KEYWORDS = { 'File…': 'attach attachment upload pdf document download', 'To-do list': 'todo task done due', Checklist: 'task todo checkbox', Divider: 'hr rule line', 'Diagram (Mermaid)': 'chart graph flow', Math: 'latex equation tex' };
 
-export function slashSource(onImage) {
+export function slashSource(onImage, onFile) {
     return (context) => {
         const line = context.state.doc.lineAt(context.pos);
         const before = context.state.sliceDoc(line.from, context.pos);
@@ -60,7 +61,7 @@ export function slashSource(onImage) {
                     const applyFrom = afterSlash - 1;
                     if (insert === null) {
                         view.dispatch({ changes: { from: applyFrom, to: applyTo, insert: '' } });
-                        onImage?.();
+                        (label === 'File…' ? onFile : onImage)?.();
                         return;
                     }
                     const at = insert.indexOf('|');
@@ -102,7 +103,7 @@ export function currentBlockType(state) {
  * selected lines (a checklist becomes a to-do block); the others are
  * inserted on a new line below, or in place of an empty line.
  */
-export function applyBlockType(view, label, onImage) {
+export function applyBlockType(view, label, onImage, onFile) {
     const { state } = view;
     const sel = state.selection.main;
     const first = state.doc.lineAt(sel.from);
@@ -126,7 +127,7 @@ export function applyBlockType(view, label, onImage) {
         return view.focus();
     }
     const insert = BLOCKS.find(([l]) => l === label)?.[3];
-    if (insert === null) return onImage?.();
+    if (insert === null) return (label === 'File…' ? onFile : onImage)?.();
     if (insert === undefined) return undefined;
     const at = insert.indexOf('|');
     const text = insert.replace('|', '');
@@ -137,4 +138,21 @@ export function applyBlockType(view, label, onImage) {
         view.dispatch({ changes: { from: last.to, insert: pre + text }, selection: { anchor: last.to + pre.length + at } });
     }
     return view.focus();
+}
+
+/**
+ * Inserts `text` as its own paragraph below the cursor's line (or in place of
+ * an empty line). The cursor stays off the new line, so a block shown as a
+ * card (an attachment) is shown at once.
+ */
+export function insertBlockBelow(view, text) {
+    const { state } = view;
+    const line = state.doc.lineAt(state.selection.main.head);
+    if (!line.text.trim()) {
+        const insert = `${text}\n\n`;
+        view.dispatch({ changes: { from: line.from, to: line.to, insert }, selection: { anchor: line.from + insert.length } });
+    } else {
+        view.dispatch({ changes: { from: line.to, insert: `\n\n${text}` }, selection: { anchor: line.to } });
+    }
+    view.focus();
 }

@@ -21,6 +21,7 @@ function hash(text) {
 
 export class FakeDrive {
     constructor() {
+        this.fake = true; // no drive.google.com pages for these files
         this.nodes = new Map([['root', { id: 'root', name: 'My Drive', mimeType: FOLDER, parents: [], trashed: false }]]);
         this.next = 1;
         this.calls = 0;
@@ -36,6 +37,7 @@ export class FakeDrive {
 
     view(node) {
         const { content, trashed, ...rest } = node;
+        if (content !== undefined) rest.size = String(typeof content === 'string' ? new Blob([content]).size : content.size);
         return { ...rest };
     }
 
@@ -244,7 +246,9 @@ export function seedDemo(drive) {
         + '\n<details>\n<summary>Done (2)</summary>\n\n'
         + `- [x] Ask for time off ✅ ${addDays(today, -1)}\n`
         + `- [x] Pick dates 📅 ${addDays(today, -4)} ✅ ${addDays(today, -5)}\n`
-        + '\n</details>\n\nTram 28 goes up to the castle.\n');
+        + '\n</details>\n\nTram 28 goes up to the castle.\n\n[📎 Itinerary.pdf](Itinerary.pdf)\n');
+    drive.add(projects.id, 'Itinerary.pdf', 'application/pdf',
+        new Blob(['%PDF-1.4\n% Demo itinerary: Lisbon, 3 nights.\n' + 'x'.repeat(48000)], { type: 'application/pdf' }));
     drive.add(projects.id, 'Scratch.md', 'text/markdown', '# Scratch\n\nA plain note without front matter.\n');
     note(projects, 'Weekly sync', { created: daysAgo(7), icon: '🗓️', tags: ['meetings'] }, '# Weekly sync\n\n1. Status\n2. Blockers\n3. Next steps\n');
     const sketch = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="140" viewBox="0 0 320 140"><rect width="320" height="140" rx="10" fill="#e8f4fb"/><circle cx="70" cy="70" r="38" fill="#3daee9"/><rect x="130" y="40" width="150" height="16" rx="8" fill="#2d7fb8"/><rect x="130" y="70" width="110" height="12" rx="6" fill="#93cee9"/><rect x="130" y="92" width="130" height="12" rx="6" fill="#93cee9"/></svg>';

@@ -253,7 +253,7 @@ async function demoRich(browser, errors) {
 
     // Add an image from a file: stored next to the note, linked relatively.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
-    await page.setInputFiles('input[type=file]', { name: 'dot.png', mimeType: 'image/png', buffer: png });
+    await page.setInputFiles('input[type=file][accept="image/*"]', { name: 'dot.png', mimeType: 'image/png', buffer: png });
     await page.waitForSelector('.save-status:text("Saved")', { timeout: 8000 });
     await page.getByRole('button', { name: 'Source' }).click();
     await page.waitForSelector('.cm-line:has-text("![dot](Rich%20note_")');
@@ -620,6 +620,48 @@ async function demoClickBelow(browser, errors) {
     await ctx.close();
 }
 
+async function demoAttachments(browser, errors) {
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Trip to Lisbon")');
+    // The rendered note shows a card with the file's kind and size, and a download link.
+    const card = page.locator('.rendered .attachment-card');
+    await card.waitFor();
+    assert.equal(await card.locator('.att-name').textContent(), 'Itinerary.pdf');
+    assert.match(await card.locator('.att-meta').textContent(), /^PDF · 4\d KB$/);
+    assert.match(await card.locator('.att-download').getAttribute('href'), /^blob:/);
+    await card.scrollIntoViewIfNeeded();
+    await shot(page, 'phone-attachment');
+    // The editor shows the same card.
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-rendered-attachment .att-name:has-text("Itinerary.pdf")');
+    // Attach a file from the + menu: it goes below the cursor's line, as a card.
+    await page.locator('.cm-line', { hasText: 'Tram 28' }).tap();
+    await page.getByRole('button', { name: 'Block type' }).tap();
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('.block-menu button', { hasText: 'File…' }).tap()]);
+    await chooser.setFiles({ name: 'Packing list.txt', mimeType: 'text/plain', buffer: Buffer.from('socks\nhat\n') });
+    await page.waitForSelector('.cm-rendered-attachment .att-name:has-text("Packing list.txt")');
+    // The same name again gets a number.
+    await page.locator('.cm-line', { hasText: 'Tram 28' }).tap();
+    await page.getByRole('button', { name: 'Block type' }).tap();
+    const [again] = await Promise.all([page.waitForEvent('filechooser'), page.locator('.block-menu button', { hasText: 'File…' }).tap()]);
+    await again.setFiles({ name: 'Packing list.txt', mimeType: 'text/plain', buffer: Buffer.from('more') });
+    await page.waitForSelector('.cm-rendered-attachment .att-name:has-text("Packing list (2).txt")');
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.waitForSelector('.cm-source');
+    const text = (await page.locator('.cm-line').allTextContents()).join('\n');
+    assert.match(text, /Tram 28 goes up to the castle\.\n\n\[📎 Packing list \(2\)\.txt\]\(<Packing%20list%20\(2\)\.txt>\)\n\n\[📎 Packing list\.txt\]\(Packing%20list\.txt\)/);
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.waitForSelector('.cm-live');
+    await page.locator('.cm-rendered-attachment').first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => [...document.querySelectorAll('.cm-rendered-attachment .att-meta')].every((m) => m.textContent.includes(' · ')));
+    await shot(page, 'phone-attachment-editor');
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -786,7 +828,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo note links', demoLinks], ['demo click below', demoClickBelow], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo note links', demoLinks], ['demo click below', demoClickBelow], ['demo attachments', demoAttachments], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {

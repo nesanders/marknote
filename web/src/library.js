@@ -34,6 +34,19 @@ export function isImageName(name) {
     return dot > 0 && Object.hasOwn(IMAGE_TYPES, name.slice(dot + 1).toLowerCase());
 }
 
+/** `name`, or "Name (2).ext", "Name (3).ext"… when `taken(name)` says it is in use. */
+export function freeName(name, taken) {
+    const clean = name.replaceAll('/', '-').trim() || 'File';
+    if (!taken(clean)) return clean;
+    const dot = clean.lastIndexOf('.');
+    const base = dot > 0 ? clean.slice(0, dot) : clean;
+    const ext = dot > 0 ? clean.slice(dot) : '';
+    for (let n = 2; ; ++n) {
+        const candidate = `${base} (${n})${ext}`;
+        if (!taken(candidate)) return candidate;
+    }
+}
+
 /** Join and normalize "a/b" + "../c" style paths (no leading slash). */
 export function joinPath(base, relative) {
     const parts = base ? base.split('/') : [];
@@ -223,7 +236,7 @@ export class Library extends EventTarget {
         this.notebooks = [];
         this.notebook = null;
         this.items = new Map();
-        this.files = new Map(); // relative path -> image file in this notebook
+        this.files = new Map(); // relative path -> image or attached file in this notebook
         this.blobUrls = new Map(); // file id -> object URL
         this.texts = new Map(); // id -> note text (this notebook), decrypted
         this.raws = new Map(); // id -> the file as stored (encrypted or not)
@@ -487,8 +500,9 @@ export class Library extends EventTarget {
                 dirFiles.set(f.parentId, f);
                 continue;
             }
-            if (!f.isFolder && isImageName(f.name)) {
-                files.set(f.path, { id: f.id, name: f.name, path: f.path, md5: f.md5Checksum ?? '', mimeType: f.mimeType });
+            // Images and attachments (anything that is not a note).
+            if (!f.isFolder && !f.name.endsWith(NOTE_SUFFIX)) {
+                files.set(f.path, { id: f.id, name: f.name, path: f.path, md5: f.md5Checksum ?? '', mimeType: f.mimeType, size: f.size ? Number(f.size) : null });
                 continue;
             }
             if (!f.isFolder && !f.name.endsWith(NOTE_SUFFIX)) continue;
@@ -693,6 +707,45 @@ export class Library extends EventTarget {
         await this.store.set('content', `blob:${file.id}`, { md5: entry.md5, blob });
         this.emit('tree');
         return encodeURI(name);
+    }
+
+    /**
+     * Attaches a file to a note (docs/attachments.md): uploaded next to the
+     * note under its own name ("Name (2).ext" when taken). Returns the link
+     * target for the note.
+     */
+    async addAttachment(noteId, file) {
+        const note = this.items.get(noteId);
+        if (note.id.startsWith('local-')) throw new Error('Wait until the note is uploaded before attaching files.');
+        if (!this.online) throw new Error('Attaching files needs a connection.');
+        const dir = this.pathOf(note.parentId ?? '');
+        const at = (n) => (dir ? `${dir}/${n}` : n);
+        const taken = (n) => this.files.has(at(n)) || [...this.items.values()].some((i) => i.path === at(n));
+        const name = freeName(file.name || 'File', taken);
+        const created = await this.guard(() => this.drive.createFile(note.driveParentId, name, file, file.type || 'application/octet-stream'));
+        const path = dir ? `${dir}/${name}` : name;
+        this.files.set(path, { id: created.id, name, path, md5: created.md5Checksum ?? '', mimeType: created.mimeType, size: file.size ?? null });
+        this.emit('tree');
+        return { name, link: encodeURI(name) };
+    }
+
+    /**
+     * What an attachment link points to: {name, size, mimeType, driveUrl,
+     * downloadUrl} or {missing}. Demo files have no Drive pages; they download
+     * from memory.
+     */
+    async resolveAttachment(noteId, src) {
+        const r = resolveAssetPath(src, this.pathOf(noteId), this.notebook?.name ?? '', this.files);
+        if (!r.path) return { missing: r.missing ?? src };
+        const f = this.files.get(r.path);
+        const info = { name: f.name, size: f.size, mimeType: f.mimeType };
+        if (this.drive.fake) {
+            info.downloadUrl = URL.createObjectURL(await this.drive.getBlob(f.id));
+        } else {
+            info.driveUrl = `https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`;
+            info.downloadUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(f.id)}`;
+        }
+        return info;
     }
 
     // ---- Writing -----------------------------------------------------------

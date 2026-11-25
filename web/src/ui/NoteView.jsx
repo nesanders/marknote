@@ -6,7 +6,8 @@ import * as FM from '../frontmatter.js';
 import { renderMarkdown } from '../markdown.js';
 import * as Todo from '../todo.js';
 import { openDuePicker } from './duepicker.js';
-import { blockTypes, currentBlockType, applyBlockType } from './slash.js';
+import { blockTypes, currentBlockType, applyBlockType, insertBlockBelow } from './slash.js';
+import { attachmentMarkdown } from '../attachments.js';
 import { enhance } from '../extras.js';
 import { Editor, actions } from './Editor.jsx';
 import { Icon, ItemIcon } from './icons.jsx';
@@ -42,6 +43,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
     const viewRef = useRef(null);
     const articleRef = useRef(null);
     const fileInput = useRef(null);
+    const attachInput = useRef(null);
     const [uploading, setUploading] = useState(0);
     const [blockMenu, setBlockMenu] = useState(null); // {current} while the toolbar's block menu is open
 
@@ -50,6 +52,25 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
         if (r.external) return { url: r.external };
         if (r.path) return { url: await library.imageUrl(library.files.get(r.path)) };
         return r;
+    };
+
+    const resolveAttachment = (src) => library.resolveAttachment(item.id, src);
+
+    // Files attached below the cursor (docs/attachments.md).
+    const addFiles = async (files) => {
+        if (!files.length) return;
+        if (library.vault && !confirm('Attachments are not encrypted: the file is stored on Google Drive as it is. Attach anyway?')) return;
+        for (const file of files) {
+            setUploading((n) => n + 1);
+            try {
+                const { name, link } = await library.addAttachment(item.id, file);
+                if (viewRef.current) insertBlockBelow(viewRef.current, attachmentMarkdown(name, link));
+            } catch (e) {
+                toast(`Could not attach “${file.name}”: ${e.message}`, 'error');
+            } finally {
+                setUploading((n) => n - 1);
+            }
+        }
     };
 
     const addImages = async (files) => {
@@ -143,7 +164,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
 
     // Math, diagrams and images, once the HTML is in the page.
     useEffect(() => {
-        if (!editing && articleRef.current) enhance(articleRef.current, { images: resolveImage }).catch(() => {});
+        if (!editing && articleRef.current) enhance(articleRef.current, { images: resolveImage, attachments: resolveAttachment }).catch(() => {});
     }, [html, editing, revision]);
 
     // Saves a body changed in the rendered view (ticks, to-do edits).
@@ -234,7 +255,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
             <header class="toolbar">
                 {showBack && <button class="icon-button" onClick={onBack} aria-label="Back to notes"><Icon name="back" /></button>}
                 <h1 class="note-title">{item.title}</h1>
-                <span class="save-status" aria-live="polite">{uploading ? 'Uploading image…' : status}</span>
+                <span class="save-status" aria-live="polite">{uploading ? 'Uploading…' : status}</span>
                 {editing && setLive && (
                     <button class={'toggle small' + (live ? '' : ' on')} aria-pressed={!live} title="Show the Markdown source"
                         onClick={() => setLive(!live)}>Source</button>
@@ -269,7 +290,13 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
             {text !== undefined && (editing ? (
                 <>
                     <Editor value={split.body} onChange={onChange} viewRef={viewRef} autoFocus live={live}
-                        resolveImage={resolveImage} onImage={() => fileInput.current?.click()} onImageFiles={addImages} />
+                        resolveImage={resolveImage} resolveAttachment={resolveAttachment} onImage={() => fileInput.current?.click()}
+                        onFile={() => attachInput.current?.click()} onImageFiles={addImages} />
+                    <input ref={attachInput} type="file" multiple hidden data-testid="attach-input"
+                        onChange={(e) => {
+                            addFiles([...e.target.files]);
+                            e.target.value = '';
+                        }} />
                     <input ref={fileInput} type="file" accept="image/*" multiple hidden
                         onChange={(e) => {
                             addImages([...e.target.files]);
@@ -285,7 +312,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
                                             <button role="menuitemradio" aria-checked={blockMenu.current === b.label} class={blockMenu.current === b.label ? 'on' : ''}
                                                 onClick={() => {
                                                     setBlockMenu(null);
-                                                    if (viewRef.current) applyBlockType(viewRef.current, b.label, () => fileInput.current?.click());
+                                                    if (viewRef.current) applyBlockType(viewRef.current, b.label, () => fileInput.current?.click(), () => attachInput.current?.click());
                                                 }}>
                                                 <span>{b.label}</span>{b.hint && <code>{b.hint}</code>}
                                             </button>

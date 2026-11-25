@@ -103,7 +103,7 @@ const theme = EditorView.theme({
  * Markdown source editor. onChange gets the full text (debounced by the caller).
  * Exposes the EditorView through viewRef for the toolbar.
  */
-export function Editor({ value, onChange, viewRef, autoFocus, live = true, resolveImage, onImage, onImageFiles }) {
+export function Editor({ value, onChange, viewRef, autoFocus, live = true, resolveImage, resolveAttachment, onImage, onFile, onImageFiles }) {
     const host = useRef(null);
     const changeRef = useRef(onChange);
     changeRef.current = onChange;
@@ -113,11 +113,15 @@ export function Editor({ value, onChange, viewRef, autoFocus, live = true, resol
     filesRef.current = onImageFiles;
     const resolveRef = useRef(resolveImage);
     resolveRef.current = resolveImage;
+    const attachRef = useRef(resolveAttachment);
+    attachRef.current = resolveAttachment;
+    const fileRef = useRef(onFile);
+    fileRef.current = onFile;
     const mode = useRef(new Compartment());
-    const preview = () => (live ? [livePreview((src) => resolveRef.current?.(src) ?? Promise.resolve({ missing: src })), todoBlocks(), EditorView.editorAttributes.of({ class: 'cm-live' })] : [EditorView.editorAttributes.of({ class: 'cm-source' })]);
+    const preview = () => (live ? [livePreview((src) => resolveRef.current?.(src) ?? Promise.resolve({ missing: src }), (src) => attachRef.current?.(src) ?? Promise.resolve({ missing: src })), todoBlocks(), EditorView.editorAttributes.of({ class: 'cm-live' })] : [EditorView.editorAttributes.of({ class: 'cm-source' })]);
 
     useEffect(() => {
-        const slashData = [{ autocomplete: slashSource(() => imageRef.current?.()) }];
+        const slashData = [{ autocomplete: slashSource(() => imageRef.current?.(), () => fileRef.current?.()) }];
         const view = new EditorView({
             parent: host.current,
             state: EditorState.create({

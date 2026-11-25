@@ -53,6 +53,9 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   Markdown shortcut; the *Insert* menu inserts the same blocks.
 - **Autosave after every edit**, including the paragraph you are still typing in
   (upstream only saved after the first change, or when you left the block).
+- **File attachments** (`/` › *File…*, *Insert › File…*): the file is stored next to the
+  note and shown as a card (type, size); open it, or open/download it on Google Drive when
+  the notebook syncs there. Same format on desktop and web: [docs/attachments.md](docs/attachments.md).
 - **To-do blocks** (`/` › *To-do list*, or *Make To-Do Block* on a checklist): ticked items
   move to the top of a collapsible *Done* section with the date they were done; unticking
   puts them back at the bottom. Optional due dates with a picker (orange today, red when
