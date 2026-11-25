@@ -372,8 +372,15 @@ async function demoBlockHandles(browser, errors) {
     await page.touchscreen.tap(box.x + box.width - 20, box.y + box.height / 2);
     await page.waitForSelector('.cm-block-grip.visible');
     await shot(page, 'phone-block-grip');
-    // Drag it above the first checklist item, with real touch events.
-    const grip = await page.locator('.cm-block-grip').boundingBox();
+    // Drag it above the first checklist item, with real touch events (once the
+    // grip has finished gliding to this block).
+    let grip = await page.locator('.cm-block-grip').boundingBox();
+    for (let i = 0; i < 20; ++i) {
+        await page.waitForTimeout(60);
+        const again = await page.locator('.cm-block-grip').boundingBox();
+        if (again.y === grip.y && again.x === grip.x) break;
+        grip = again;
+    }
     const first = await page.locator('.cm-line', { hasText: 'Menu bar or hamburger' }).boundingBox();
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
@@ -394,6 +401,7 @@ async function demoBlockHandles(browser, errors) {
     assert.match(lines[0], /Mobile layout/, JSON.stringify(lines));
     // Tap the grip: Move down puts it back one place.
     await page.waitForSelector('.cm-block-grip.visible');
+    await page.waitForTimeout(300);
     await page.locator('.cm-block-grip').tap();
     await page.waitForSelector('.cm-block-menu');
     await shot(page, 'phone-block-menu');
