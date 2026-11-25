@@ -575,6 +575,51 @@ async function demoLinks(browser, errors) {
     await ctx.close();
 }
 
+async function demoClickBelow(browser, errors) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Marknote overhaul")');
+    await page.click('.row:has-text("Feature list")'); // ends with a code block
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-content');
+    const source = async () => {
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.waitForSelector('.cm-source');
+        const text = (await page.locator('.cm-line').allTextContents()).join('\n');
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.waitForSelector('.cm-live');
+        return text;
+    };
+    const box = await page.locator('.cm-scroller').boundingBox();
+    // Scrolled to the end, the bottom of the editor is the space under the text.
+    const clickBelow = async () => {
+        await page.evaluate(() => {
+            const s = document.querySelector('.cm-scroller');
+            s.scrollTop = s.scrollHeight;
+        });
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height - 40);
+    };
+    await clickBelow();
+    await page.keyboard.type('After the code');
+    assert.match(await source(), /```\n\nAfter the code$/);
+    // Again: the last line has text, so another paragraph starts.
+    await clickBelow();
+    await page.keyboard.type('One more');
+    assert.match(await source(), /After the code\n\nOne more$/);
+    // An empty last paragraph is reused, not doubled.
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Enter');
+    await clickBelow();
+    await page.keyboard.type('Third');
+    assert.match(await source(), /One more\n\nThird$/);
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -741,7 +786,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo note links', demoLinks], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo note links', demoLinks], ['demo click below', demoClickBelow], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {

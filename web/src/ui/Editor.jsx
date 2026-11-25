@@ -14,6 +14,7 @@ import { livePreview } from './livepreview.js';
 import { slashSource } from './slash.js';
 import { blockHandles } from './blockhandles.js';
 import { todoBlocks } from './todoedit.js';
+import { clickBelowToContinue } from './endclick.js';
 
 const markdownStyle = HighlightStyle.define([
     { tag: t.heading1, fontWeight: '700', fontSize: '1.45em' },
@@ -90,7 +91,8 @@ const theme = EditorView.theme({
     '&': { height: '100%', fontSize: 'calc(1rem * var(--font-scale))', backgroundColor: 'var(--view-bg)', color: 'var(--text)' },
     '.cm-scroller': { fontFamily: 'var(--sans)', lineHeight: '1.6', padding: '0.75rem 0', position: 'relative' },
     // Room on the left for the block grip.
-    '.cm-content': { maxWidth: '52rem', margin: '0 auto', padding: '0 1rem 0 2.25rem', caretColor: 'var(--accent)' },
+    // Room under the text to click in (see endclick.js), even in a long note.
+    '.cm-content': { maxWidth: '52rem', margin: '0 auto', padding: '0 1rem 35vh 2.25rem', caretColor: 'var(--accent)' },
     '.cm-gutters': { display: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
     '&.cm-focused': { outline: 'none' },
@@ -132,6 +134,7 @@ export function Editor({ value, onChange, viewRef, autoFocus, live = true, resol
                     EditorState.languageData.of(() => slashData),
                     mode.current.of(preview()),
                     blockHandles(),
+                    clickBelowToContinue(),
                     EditorView.domEventHandlers({
                         paste(e) {
                             const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));

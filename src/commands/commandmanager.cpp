@@ -155,6 +155,20 @@ void CommandManager::insertParagraphBelow(TreeItem *block, const QString &text)
     pushCommand(new InsertParagraphBelowCommand(block, text, m_model));
 }
 
+void CommandManager::focusEndOfDocument()
+{
+    if (!m_model || !m_model->rootItem() || m_model->rootItem()->childCount() == 0) {
+        return;
+    }
+    TreeItem *root = m_model->rootItem();
+    TreeItem *last = root->child(root->childCount() - 1);
+    if (last->type() == MDOptions::ElementType::Paragraph && blocksToMarkdown({last}).trimmed().isEmpty()) {
+        m_model->requestFocus(last, -1);
+        return;
+    }
+    insertParagraphBelow(last, QString());
+}
+
 void CommandManager::editText(TreeItem *block, const QString &oldText, const QString &newText, int oldCursorPosition, int newCursorPosition)
 {
     pushCommand(new EditTextCommand(block, oldText, newText, oldCursorPosition, newCursorPosition, m_model));

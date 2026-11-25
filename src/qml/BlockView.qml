@@ -291,7 +291,20 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 synchronousDrag: true
-                bottomMargin: parent.height / 2.0
+
+                // The space below the last block: a click there continues the
+                // note (into an empty last paragraph, or a new one).
+                footer: Item {
+                    width: blockListView.width
+                    height: Math.max(Kirigami.Units.gridUnit * 4, blockListView.height / 2.0)
+
+                    HoverHandler {
+                        cursorShape: Qt.IBeamCursor
+                    }
+                    TapHandler {
+                        onTapped: CommandManager.focusEndOfDocument()
+                    }
+                }
             }
             Layout.fillWidth: true
             ScrollBar.vertical: ScrollBar {

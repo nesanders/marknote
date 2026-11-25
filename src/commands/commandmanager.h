@@ -50,6 +50,8 @@ public:
     Q_INVOKABLE void
     splitCode(TreeItem *block, const QString &oldText, const QString &text, int cursorPosition, const QString &oldLanguage, const QString &language);
     Q_INVOKABLE void insertParagraphBelow(TreeItem *block, const QString &text);
+    /// For a click below the last block: focus it if it is an empty paragraph, else add one after it.
+    Q_INVOKABLE void focusEndOfDocument();
     Q_INVOKABLE void mergeWithPreviousBlock(TreeItem *block, const QString &text);
     Q_INVOKABLE void transformToBlockquote(TreeItem *block, int level, const QString &text);
     Q_INVOKABLE void transformToList(TreeItem *block, bool isOrdered, int startNumber, const QString &text);
