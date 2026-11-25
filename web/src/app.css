@@ -428,3 +428,54 @@ input.mono { font-family: ui-monospace, 'Noto Sans Mono', monospace; letter-spac
 /* Manual order: insertion line above or below the row under the pointer */
 .row.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
 .row.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
+
+/* Block handles in the editor: a grip beside the current block. */
+.cm-block-grip {
+    position: absolute; z-index: 5; width: 26px; height: 34px; margin-top: -17px; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: 8px; background: transparent; color: var(--muted);
+    opacity: 0; pointer-events: none; touch-action: none; cursor: grab;
+    transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, top 0.12s ease;
+}
+.cm-block-grip.visible { opacity: 0.55; pointer-events: auto; }
+.cm-block-grip.visible:hover, .cm-block-grip.visible:focus-visible { opacity: 1; background: var(--hover); color: var(--text); }
+.cm-block-grip.dragging { opacity: 1; background: var(--selection); color: var(--accent-strong); cursor: grabbing; transition: none; }
+@media (pointer: coarse) {
+    /* A finger-sized target that still looks slim. */
+    .cm-block-grip { width: 30px; height: 40px; margin-top: -20px; }
+    .cm-block-grip.visible { opacity: 0.7; }
+}
+.cm-line.cm-block-dragged { opacity: 0.35; transition: opacity 0.15s ease; }
+.cm-block-drop-line {
+    position: absolute; z-index: 6; right: 1rem; height: 3px; margin-top: -1.5px; border-radius: 2px;
+    background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+    opacity: 0; pointer-events: none; transition: opacity 0.1s ease, top 0.08s ease;
+}
+.cm-block-drop-line.visible { opacity: 1; }
+.cm-block-drop-line::before {
+    content: ''; position: absolute; left: -4px; top: -2.5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+}
+.cm-block-ghost {
+    position: fixed; left: 0; top: 0; z-index: 1000; max-width: min(70vw, 22rem); padding: 0.55rem 0.8rem;
+    border-radius: 10px; background: var(--view-bg); color: var(--text); font: inherit; font-size: 0.95rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.12); border: 1px solid var(--border);
+    animation: cm-lift 0.14s ease-out;
+}
+.cm-block-ghost-more { color: var(--muted); font-size: 0.85em; }
+@keyframes cm-lift { from { opacity: 0.4; scale: 0.96; } to { opacity: 1; scale: 1; } }
+.cm-block-menu {
+    position: absolute; z-index: 7; margin-top: 18px; display: flex; gap: 2px; padding: 4px;
+    border-radius: 10px; background: var(--view-bg); border: 1px solid var(--border);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+.cm-block-menu button {
+    display: flex; align-items: center; gap: 0.35rem; min-height: 36px; padding: 0 0.7rem;
+    border: none; border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: 0.9rem;
+}
+.cm-block-menu button:hover:not(:disabled) { background: var(--hover); }
+.cm-block-menu button:disabled { opacity: 0.35; }
+@media (prefers-reduced-motion: reduce) {
+    .cm-block-grip, .cm-block-drop-line { transition: none; }
+    .cm-block-ghost { animation: none; }
+}

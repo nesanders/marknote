@@ -12,6 +12,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags as t } from '@lezer/highlight';
 import { livePreview } from './livepreview.js';
 import { slashSource } from './slash.js';
+import { blockHandles } from './blockhandles.js';
 
 const markdownStyle = HighlightStyle.define([
     { tag: t.heading1, fontWeight: '700', fontSize: '1.45em' },
@@ -86,8 +87,9 @@ export const actions = {
 
 const theme = EditorView.theme({
     '&': { height: '100%', fontSize: 'calc(1rem * var(--font-scale))', backgroundColor: 'var(--view-bg)', color: 'var(--text)' },
-    '.cm-scroller': { fontFamily: 'var(--sans)', lineHeight: '1.6', padding: '0.75rem 0' },
-    '.cm-content': { maxWidth: '52rem', margin: '0 auto', padding: '0 1rem', caretColor: 'var(--accent)' },
+    '.cm-scroller': { fontFamily: 'var(--sans)', lineHeight: '1.6', padding: '0.75rem 0', position: 'relative' },
+    // Room on the left for the block grip.
+    '.cm-content': { maxWidth: '52rem', margin: '0 auto', padding: '0 1rem 0 2.25rem', caretColor: 'var(--accent)' },
     '.cm-gutters': { display: 'none' },
     '.cm-activeLine': { backgroundColor: 'transparent' },
     '&.cm-focused': { outline: 'none' },
@@ -128,6 +130,7 @@ export function Editor({ value, onChange, viewRef, autoFocus, live = true, resol
                     // One source object: autocomplete tells sources apart by identity.
                     EditorState.languageData.of(() => slashData),
                     mode.current.of(preview()),
+                    blockHandles(),
                     EditorView.domEventHandlers({
                         paste(e) {
                             const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));

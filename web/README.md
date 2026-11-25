@@ -40,6 +40,9 @@ nothing is saved).
 - **Drag and drop** in the tree, as on the desktop: onto a folder moves into it, onto
   a note moves next to it, onto empty space moves to the top level. With touch, hold
   a note, then drag (hold and release opens its menu).
+- **Move blocks while editing:** a grip beside the paragraph, heading or list item you are
+  in; drag it (on a phone too, no long press) to move the block, or tap it for Move up /
+  Move down. List items take their sub-items along.
 - **Manual order** (Settings › Sort notes › Manual): drag a note above or below another;
   the order is the same as on the desktop.
 - **Show in Google Drive** on notes, folders and notebooks opens them on drive.google.com,

@@ -355,6 +355,54 @@ async function demoPhone(browser, errors) {
     await ctx.close();
 }
 
+async function demoBlockHandles(browser, errors) {
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Marknote overhaul")');
+    await page.click('.row:has-text("Design notes")');
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-content');
+    const lineText = () => page.locator('.cm-line').allTextContents();
+    // Put the cursor in the last checklist item: its grip appears.
+    const item = page.locator('.cm-line', { hasText: 'Mobile layout' });
+    const box = await item.boundingBox();
+    await page.touchscreen.tap(box.x + box.width - 20, box.y + box.height / 2);
+    await page.waitForSelector('.cm-block-grip.visible');
+    await shot(page, 'phone-block-grip');
+    // Drag it above the first checklist item, with real touch events.
+    const grip = await page.locator('.cm-block-grip').boundingBox();
+    const first = await page.locator('.cm-line', { hasText: 'Menu bar or hamburger' }).boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    const gx = grip.x + grip.width / 2;
+    let gy = grip.y + grip.height / 2;
+    await touch('touchStart', gx, gy);
+    for (let i = 1; i <= 12; ++i) {
+        gy -= (grip.y + grip.height / 2 - (first.y + 3)) / 12;
+        await touch('touchMove', gx, gy);
+        await page.waitForTimeout(20);
+    }
+    await page.waitForSelector('.cm-block-drop-line.visible');
+    await page.waitForSelector('.cm-block-ghost');
+    await shot(page, 'phone-block-drag');
+    await touch('touchEnd', gx, gy);
+    await page.waitForTimeout(200);
+    let lines = (await lineText()).filter((t) => /layout|hamburger|dense/.test(t));
+    assert.match(lines[0], /Mobile layout/, JSON.stringify(lines));
+    // Tap the grip: Move down puts it back one place.
+    await page.waitForSelector('.cm-block-grip.visible');
+    await page.locator('.cm-block-grip').tap();
+    await page.waitForSelector('.cm-block-menu');
+    await shot(page, 'phone-block-menu');
+    await page.locator('.cm-block-menu button', { hasText: 'Move down' }).tap();
+    lines = (await lineText()).filter((t) => /layout|hamburger|dense/.test(t));
+    assert.match(lines[1], /Mobile layout/, JSON.stringify(lines));
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -521,7 +569,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {
