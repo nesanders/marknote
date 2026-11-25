@@ -118,6 +118,12 @@ jobs:
           for ref in $(ostree refs --repo=flatpak-repo | grep "^app/$APP\.Locale/\|^runtime/$APP\.Locale/" || true); do
             flatpak build-sign flatpak-repo "$(echo "$ref" | cut -d/ -f2)" master --runtime --gpg-sign="$KEY_ID" --gpg-homedir="$GNUPGHOME"
           done
+          # The appstream branches were committed unsigned at export; drop them
+          # so build-update-repo below regenerates them signed (flatpak update
+          # pulls them and refuses unsigned commits).
+          for ref in $(ostree refs --repo=flatpak-repo | grep '^appstream' || true); do
+            ostree refs --repo=flatpak-repo --delete "$ref"
+          done
           # Static deltas: a first install fetches a few large files instead of
           # hundreds of small objects (GitHub Pages answers bursts with 503).
           flatpak build-update-repo flatpak-repo --prune --default-branch=master \
@@ -159,6 +165,11 @@ jobs:
           flatpak remote-modify --user check --url=http://127.0.0.1:8099/flatpak/repo/
           ls site/flatpak/repo/deltas >/dev/null && echo "Static deltas: $(find site/flatpak/repo/deltas -type f | wc -l) files"
           flatpak install --user -y --noninteractive check io.github.nesanders.marknote
+          # What flatpak update also pulls: fails if the appstream data is unsigned.
+          flatpak update --user -y --noninteractive --appstream check
+          for ref in $(ostree refs --repo=site/flatpak/repo); do
+            ostree show --repo=site/flatpak/repo "$ref" | grep -q 'Found .* signature' || { echo "::error::$ref is not signed"; exit 1; }
+          done
           flatpak info --user io.github.nesanders.marknote
           grep -E '^(Url|Title)=' site/flatpak/marknote.flatpakref
 
