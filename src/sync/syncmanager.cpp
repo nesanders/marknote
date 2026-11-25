@@ -507,6 +507,19 @@ QString SyncManager::googleDriveUrl(const QString &path) const
     return folder ? QString(u"https://drive.google.com/drive/folders/"_s + id) : QString(u"https://drive.google.com/file/d/"_s + id + u"/view"_s);
 }
 
+QString SyncManager::googleDriveId(const QString &path) const
+{
+    const QString clean = cleanNotebookPath(path);
+    const QString nb = notebookOf(clean + u"/x"_s);
+    if (nb.isEmpty() || clean == nb || !syncsToGoogle(nb)) {
+        return {};
+    }
+    const QString target = settings(nb).value(u"remoteFolder"_s).toString();
+    const SyncState state = SyncState::load(statePathFor(nb, u"google"_s, target));
+    const QString rel = clean.mid(nb.size() + 1);
+    return state.folders.contains(rel) ? QString() : state.ids.value(rel);
+}
+
 void SyncManager::purgeReadableCopies(const QString &notebookPath)
 {
     const QString path = cleanNotebookPath(notebookPath);

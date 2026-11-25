@@ -62,6 +62,15 @@ public:
     /// item holding the block's text, so it is written back verbatim.
     static void groupTodoBlocks(const QSharedPointer<MD::Document> &doc, const QString &markdown);
 
+    /// Replace each top-level paragraph of @p doc that is a file attachment
+    /// (docs/attachments.md) with one raw item holding its exact text.
+    static void groupAttachments(const QSharedPointer<MD::Document> &doc, const QString &markdown);
+    /// Both groupings, as done when a note is opened or markdown is pasted.
+    static void groupSpecialBlocks(const QSharedPointer<MD::Document> &doc, const QString &markdown);
+
+    /// The markdown of an attachment block, or a null string for other blocks.
+    QString attachmentMarkdown() const;
+
     /// The markdown of a to-do block, or a null string for other blocks.
     QString todoMarkdown() const;
     void setTodoMarkdown(const QString &markdown);

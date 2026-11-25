@@ -4,6 +4,7 @@
 #include "treeitem.h"
 #include "mddatagenerator.h"
 #include "todoblock.h"
+#include "attachments.h"
 #include <QFileInfo>
 #include <md4qt/html.h>
 #include <md4qt/parser.h>
@@ -12,6 +13,8 @@ using namespace Qt::StringLiterals;
 // Marks the raw items groupTodoBlocks made (a lone marker comment is not one).
 // Raw HTML has no text style options of its own, so a high bit is free.
 static constexpr int s_todoBlockOpt = 1 << 24;
+// Marks the raw items groupAttachments made.
+static constexpr int s_attachmentOpt = 1 << 25;
 
 TreeItem::TreeItem(QSharedPointer<MD::Document> doc, TreeItem *parent, QObject *parentObject)
     : QObject(parent ? parent : parentObject)
@@ -178,7 +181,7 @@ QList<TreeItem *> TreeItem::fromMarkdown(const QString &markdown, QSharedPointer
     }
 
     auto tmpDoc = parser.parse(stream, path, fileName);
-    groupTodoBlocks(tmpDoc, markdown);
+    groupSpecialBlocks(tmpDoc, markdown);
 
     QList<TreeItem *> items;
     for (const auto &item : tmpDoc->items()) {
@@ -240,6 +243,53 @@ void TreeItem::groupTodoBlocks(const QSharedPointer<MD::Document> &doc, const QS
         doc->insertItem(i, raw);
         ++i;
     }
+}
+
+void TreeItem::groupAttachments(const QSharedPointer<MD::Document> &doc, const QString &markdown)
+{
+    if (!doc || !markdown.contains(u"📎"_s)) {
+        return;
+    }
+    const QStringList lines = markdown.split(u'\n');
+    for (qsizetype i = 0; i < doc->items().size(); ++i) {
+        const auto &item = doc->items().at(i);
+        if (item->type() != MD::ItemType::Paragraph) {
+            continue;
+        }
+        const qsizetype start = item->startLine();
+        const qsizetype end = item->endLine();
+        if (start < 0 || end < start || end >= lines.size()) {
+            continue;
+        }
+        const QString text = lines.mid(start, end - start + 1).join(u'\n');
+        if (!Attachments::parse(text)) {
+            continue;
+        }
+        auto raw = QSharedPointer<MD::RawHtml>::create();
+        raw->setText(text);
+        raw->setOpts(s_attachmentOpt);
+        raw->setStartColumn(0);
+        raw->setStartLine(start);
+        raw->setEndLine(end);
+        raw->setEndColumn(qMax<qsizetype>(0, lines.at(end).size() - 1));
+        doc->removeItemAt(i);
+        doc->insertItem(i, raw);
+    }
+}
+
+void TreeItem::groupSpecialBlocks(const QSharedPointer<MD::Document> &doc, const QString &markdown)
+{
+    groupTodoBlocks(doc, markdown);
+    groupAttachments(doc, markdown);
+}
+
+QString TreeItem::attachmentMarkdown() const
+{
+    const auto raw = m_item.dynamicCast<MD::RawHtml>();
+    if (!raw || !(raw->opts() & s_attachmentOpt)) {
+        return QString();
+    }
+    return raw->text();
 }
 
 QString TreeItem::todoMarkdown() const
@@ -326,6 +376,11 @@ QVariantMap TreeItem::data() const
         if (!todo.isNull()) {
             map[u"type"_s] = QVariant::fromValue(MDOptions::ElementType::Todo);
             map[u"todo"_s] = todo;
+        }
+        const QString attachment = attachmentMarkdown();
+        if (!attachment.isNull()) {
+            map[u"type"_s] = QVariant::fromValue(MDOptions::ElementType::Attachment);
+            map[u"attachment"_s] = attachment;
         }
         break;
     }

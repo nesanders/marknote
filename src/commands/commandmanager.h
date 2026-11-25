@@ -63,6 +63,8 @@ public:
     Q_INVOKABLE TreeItem *checklistForTodo(TreeItem *block) const;
     /// Turn the checklist @p block is in into a to-do block.
     Q_INVOKABLE void makeTodoBlock(TreeItem *block);
+    /// Insert @p markdown (e.g. an attachment paragraph) as new block(s) below @p block, as one undo step.
+    Q_INVOKABLE void insertBlockBelow(TreeItem *block, const QString &markdown);
     Q_INVOKABLE void splitListItem(TreeItem *block, const QString &text, int splitIndex);
     Q_INVOKABLE void changeListType(TreeItem *block, int listType);
     Q_INVOKABLE bool isListItem(TreeItem *block) const;

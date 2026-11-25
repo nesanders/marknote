@@ -227,6 +227,21 @@ void CommandManager::mergeWithPreviousBlock(TreeItem *block, const QString &text
         return;
     }
 
+    // Text cannot merge into a card right above it (an attachment, a to-do
+    // block): the first Backspace selects the card, the next one removes it.
+    if (block->row() > 0 && m_model) {
+        TreeItem *above = block->parent()->child(block->row() - 1);
+        if (above && (above->type() == MDOptions::ElementType::Attachment || above->type() == MDOptions::ElementType::Todo)) {
+            if (m_model->isBlockSelected(above)) {
+                removeBlocks({above});
+                m_model->requestFocus(block, 0);
+            } else {
+                m_model->selectBlock(above);
+            }
+            return;
+        }
+    }
+
     TreeItem *target = getPreviousSibling(block);
 
     if (target) {
@@ -300,6 +315,25 @@ void CommandManager::makeTodoBlock(TreeItem *block)
     }
     m_model->clearSelection();
     pushCommand(new ParseBlockCommand(list, *todo, m_model));
+}
+
+void CommandManager::insertBlockBelow(TreeItem *block, const QString &markdown)
+{
+    if (!block || !block->parent() || !m_model || markdown.isEmpty()) {
+        return;
+    }
+    // One undo step: the new paragraph and what it is parsed into.
+    if (auto stack = currentUndoStack()) {
+        stack->beginMacro(u"Insert block"_s);
+    }
+    insertParagraphBelow(block, QString());
+    TreeItem *paragraph = m_model->focusedBlock();
+    if (paragraph && paragraph != block) {
+        pushCommand(new ParseBlockCommand(paragraph, markdown, m_model));
+    }
+    if (auto stack = currentUndoStack()) {
+        stack->endMacro();
+    }
 }
 
 void CommandManager::splitListItem(TreeItem *block, const QString &text, int splitIndex)

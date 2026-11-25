@@ -54,7 +54,7 @@ void AsyncDocBuilder::parseDocument(QPromise<DocPointer> &promise, const QString
 
     const QFileInfo info(filePath);
     auto doc = parser.parse(stream, info.absolutePath(), info.fileName());
-    TreeItem::groupTodoBlocks(doc, parts.body);
+    TreeItem::groupSpecialBlocks(doc, parts.body);
 
     promise.addResult(doc);
 }

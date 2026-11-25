@@ -257,6 +257,76 @@ EditPage {
         }
     }
 
+    // Insert › File… and "/" › File… (docs/attachments.md): the file is copied
+    // next to the note and linked from a new block below `attachTarget`.
+    property var attachTarget: null
+    property bool attachReplacesTarget: false
+
+    function startAttach(block, replaceTarget: bool): void {
+        root.attachTarget = block;
+        root.attachReplacesTarget = replaceTarget;
+        if (Vaults.isEncrypted(root.noteFullPath.toString())) {
+            attachEncryptedDialog.open();
+        } else {
+            attachDialog.open();
+        }
+    }
+
+    function finishAttach(file): void {
+        const target = root.attachTarget;
+        const replace = root.attachReplacesTarget;
+        root.attachTarget = null;
+        root.attachReplacesTarget = false;
+        if (!target || file.toString().length === 0) {
+            return;
+        }
+        const md = AttachmentHelper.attach(root.noteFullPath, file);
+        if (md.length === 0) {
+            return;
+        }
+        CommandManager.insertBlockBelow(target, md);
+        if (replace) {
+            CommandManager.removeBlocks([target]);
+        }
+    }
+
+    Components.MessageDialog {
+        id: attachEncryptedDialog
+        parent: root.overlay
+        dialogType: Components.MessageDialog.Warning
+        title: KI18n.i18nc("@title:window", "Attach File")
+        subtitle: KI18n.i18n("Attachments are not encrypted. Attach anyway?")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            close();
+            attachDialog.open();
+        }
+        onRejected: {
+            close();
+            root.attachTarget = null;
+        }
+    }
+
+    FileDialog {
+        id: attachDialog
+
+        title: KI18n.i18nc("@title:window", "Attach a File")
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        fileMode: FileDialog.OpenFile
+        onAccepted: root.finishAttach(selectedFile)
+        onRejected: root.attachTarget = null
+    }
+
+    Connections {
+        target: AttachmentHelper
+        function onStatusMessage(message: string): void {
+            const window = root.Window.window;
+            if (window && window.showPassiveNotification) {
+                window.showPassiveNotification(message);
+            }
+        }
+    }
+
     TableDialog {
         id: tableDialog
         implicitWidth: Kirigami.Units.gridUnit * 20
@@ -609,6 +679,11 @@ EditPage {
 
         slashPopup.close();
 
+        if (item.type === "file") {
+            root.startAttach(currentBlock, wasEmpty);
+            return;
+        }
+
         root.insertBlockBelow(currentBlock, item.type);
 
         if (wasEmpty) {
@@ -627,6 +702,10 @@ EditPage {
     }
 
     function insertBlockBelow(currentBlock, type: string): void {
+        if (type === "file") {
+            root.startAttach(currentBlock, false);
+            return;
+        }
         CommandManager.insertParagraphBelow(currentBlock, "");
 
         let newBlock = CommandManager.model ? CommandManager.model.focusedBlock() : null;

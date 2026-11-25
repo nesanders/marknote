@@ -33,6 +33,7 @@ Popup {
         { group: i18n("Blocks"), md: "```mermaid", name: i18n("Mermaid Diagram"), type: "mermaid", icon: "view-preview", description: i18n("Flowchart, sequence, or architecture diagram") },
         { group: i18n("Blocks"), md: "---", name: i18n("Divider"), type: "divider", icon: "insert-horizontal-rule", description: i18n("Horizontal dividing line") },
         { group: i18n("Blocks"), md: "|", name: i18n("Table"), type: "table", icon: "insert-table", description: i18n("Tabular data grid") },
+        { group: i18n("Blocks"), md: "file", name: i18n("File…"), type: "file", icon: "mail-attachment", description: i18n("Attach a file to this note") },
         { group: "", md: "Esc", name: i18n("Close menu"), type: "close", icon: "dialog-close", description: i18n("Dismiss this menu") }
     ]
 

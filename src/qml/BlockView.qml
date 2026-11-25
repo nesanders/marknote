@@ -66,6 +66,12 @@ Item {
     }
 
     Shortcut {
+        sequence: "Backspace"
+        enabled: EditorActions.deleteBlockAction.enabled
+        onActivated: EditorActions.deleteBlockAction.trigger()
+    }
+
+    Shortcut {
         sequence: StandardKey.Copy
         enabled: EditorActions.copyAction.enabled
         onActivated: EditorActions.copyAction.trigger()

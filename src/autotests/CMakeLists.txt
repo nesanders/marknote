@@ -103,3 +103,9 @@ ecm_add_test(todotest.cpp
     NAME_PREFIX "marknote-"
 )
 target_compile_definitions(todotest PRIVATE TODO_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/data/todo.json")
+
+ecm_add_test(attachmenttest.cpp
+    TEST_NAME attachmenttest
+    LINK_LIBRARIES marknote_static Qt::Test
+    NAME_PREFIX "marknote-"
+)

@@ -168,6 +168,7 @@ Controls.MenuBar {
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Mermaid Diagram"); icon.name: "view-preview"; onTriggered: root.insert("mermaid") }
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Table"); icon.name: "insert-table"; onTriggered: root.insert("table") }
         Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "Divider"); icon.name: "insert-horizontal-rule"; onTriggered: root.insert("divider") }
+        Controls.MenuItem { text: KI18n.i18nc("@action:inmenu", "File…"); icon.name: "mail-attachment"; onTriggered: root.insert("file") }
         Controls.MenuSeparator {}
         Controls.MenuItem {
             text: KI18n.i18nc("@info:inmenu", "Tip: type / in a note for all blocks")

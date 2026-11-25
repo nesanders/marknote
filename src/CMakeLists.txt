@@ -100,6 +100,7 @@ ecm_add_qml_module(marknote_static
         qml/BlockText.qml
         qml/BlockTableCell.qml
         qml/BlockTodo.qml
+        qml/BlockAttachment.qml
         qml/TodoDueDialog.qml
     SOURCES
         documenthandler.cpp documenthandler.h
@@ -146,6 +147,7 @@ ecm_add_qml_module(marknote_static
         commands/edittext.h commands/edittext.cpp
         commands/edittodo.h commands/edittodo.cpp
         todoblock.h todoblock.cpp
+        attachments.h attachments.cpp
         commands/editcelltext.h commands/editcelltext.cpp
         commands/editcode.h commands/editcode.cpp
         commands/parseblock.h commands/parseblock.cpp

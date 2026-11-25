@@ -36,6 +36,8 @@ enum ElementType {
     Math = 20,
     /// A to-do block (docs/todo.md), kept as its raw markdown.
     Todo = 21,
+    /// A file attachment paragraph (docs/attachments.md), kept as its raw markdown.
+    Attachment = 22,
 };
 Q_ENUM_NS(ElementType)
 

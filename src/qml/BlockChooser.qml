@@ -54,6 +54,11 @@ DelegateChooser {
         BlockTodo { }
     }
 
+    DelegateChoice {
+        roleValue: MDOptions.ElementType.Attachment
+        BlockAttachment { }
+    }
+
     // Default choice
     DelegateChoice {
         Item {
