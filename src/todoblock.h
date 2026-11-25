@@ -59,6 +59,8 @@ struct Op {
         // Desktop extras (not in the shared fixtures): edit or drop an item.
         Text,
         Remove,
+        // Shared: move an open item to another place in the open list.
+        Move,
     };
     Type type = Toggle;
     int line = 0;
@@ -66,6 +68,7 @@ struct Op {
     QString date; ///< Due: YYYY-MM-DD, or a null string to clear it
     QString sort; ///< Sort: "manual" or "due"
     QString text; ///< Add / Text
+    int to = 0; ///< Move: the item's index in the open list afterwards
 };
 
 /// The exact marker line written for a new block.
@@ -123,6 +126,8 @@ public:
     Q_INVOKABLE QString addItem(const QString &markdown, const QString &text) const;
     Q_INVOKABLE QString setText(const QString &markdown, int line, const QString &text) const;
     Q_INVOKABLE QString removeItem(const QString &markdown, int line) const;
+    /// Moves the open item on `line` to position `to` (switches the block to manual order).
+    Q_INVOKABLE QString moveItem(const QString &markdown, int line, int to) const;
 
     Q_INVOKABLE QString today() const;
     Q_INVOKABLE QString addDays(const QString &date, int days) const;

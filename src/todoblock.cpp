@@ -402,6 +402,15 @@ std::optional<QString> apply(const QString &body, const Op &op, const QString &t
         }
         list->removeAt(index);
         return replaceBlock(body, block, today);
+    case Op::Move: {
+        if (list != &block.open || op.to < 0 || op.to >= block.open.size()) {
+            return std::nullopt;
+        }
+        // Placing an item by hand means the order is now manual.
+        block.options.sort = QStringLiteral("manual");
+        block.open.move(index, op.to);
+        return replaceBlock(body, block, today);
+    }
     }
     return std::nullopt;
 }
@@ -588,6 +597,15 @@ QString TodoHelper::removeItem(const QString &markdown, int line) const
     TodoBlock::Op op;
     op.type = TodoBlock::Op::Remove;
     op.line = line;
+    return orSame(TodoBlock::apply(markdown, op), markdown);
+}
+
+QString TodoHelper::moveItem(const QString &markdown, int line, int to) const
+{
+    TodoBlock::Op op;
+    op.type = TodoBlock::Op::Move;
+    op.line = line;
+    op.to = to;
     return orSame(TodoBlock::apply(markdown, op), markdown);
 }
 

@@ -54,6 +54,7 @@ They are written at the end of the item's first line, due first, then done.
 - **Uncheck** a done item: it moves to the **bottom** of the open list and
   loses `✅`.
 - **Set/clear due date**: on any item.
+- **Move**: drag an open item to another place; the block switches to `manual` order.
 - **Sort**: `manual` (default; the order in the file is the order you see) or
   `due` (`sort=due` in the marker): open items are kept sorted by due date,
   earliest first, undated last, ties in their existing order. The file is

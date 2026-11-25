@@ -191,7 +191,8 @@ function replaceBlock(body, block, today) {
  * Applies one operation to the block holding `op.line`; returns the new body,
  * or null when the line is not in a to-do block (or the operation is invalid).
  * Operations: {type: 'toggle', line, checked?}, {type: 'due', line, date|null},
- * {type: 'sort', line, sort: 'manual'|'due'}, {type: 'add', line, text}.
+ * {type: 'sort', line, sort: 'manual'|'due'}, {type: 'add', line, text},
+ * {type: 'move', line, to} (an open item to index `to`; the order becomes manual).
  */
 export function apply(body, op, today = localToday()) {
     const where = locate(body, op.line);
@@ -223,6 +224,14 @@ export function apply(body, op, today = localToday()) {
         if (op.sort !== 'manual' && op.sort !== 'due') return null;
         block.options.sort = op.sort;
         return replaceBlock(body, block, today);
+    case 'move': {
+        // Placing an item by hand means the order is now manual.
+        if (list !== 'open' || !(op.to >= 0 && op.to < block.open.length)) return null;
+        block.options.sort = 'manual';
+        const [item] = block.open.splice(index, 1);
+        block.open.splice(op.to, 0, item);
+        return replaceBlock(body, block, today);
+    }
     case 'add':
         block.open.push({ indent: '', bullet: '-', checked: false, text: op.text ?? '', due: null, done: null, extra: [], line: -1 });
         return replaceBlock(body, block, today);

@@ -140,97 +140,194 @@ BlockTemplate {
                 }
             }
 
-            // Open items.
-            Repeater {
-                model: root.todo.open
+            // Open items. Each row has a grip to drag it to another place.
+            Item {
+                Layout.fillWidth: true
+                implicitHeight: openList.implicitHeight
 
-                delegate: ColumnLayout {
-                    id: openRow
-
-                    required property var modelData
-
-                    Layout.fillWidth: true
+                ColumnLayout {
+                    id: openList
+                    anchors.left: parent.left
+                    anchors.right: parent.right
                     spacing: 0
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                    property int dragFrom: -1 // row being dragged
+                    property int slot: -1 // gap it would land in: 0 = above the first row
 
-                        QQC2.CheckBox {
-                            id: openCheck
-                            checked: false
-                            onClicked: root.commit(TodoHelper.toggle(root.todoMd, openRow.modelData.line))
-
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: i18nc("@info:tooltip", "Mark as done")
-                            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
-                        }
-
-                        QQC2.TextField {
-                            id: itemField
-
-                            Layout.fillWidth: true
-                            text: openRow.modelData.text
-                            placeholderText: i18nc("@info:placeholder", "To-do")
-                            background: null
-                            leftPadding: 0
-                            font.pointSize: root.fontSize
-                            font.family: Config.editorFont.family
-
-                            onEditingFinished: {
-                                if (text !== openRow.modelData.text) {
-                                    root.commit(TodoHelper.setText(root.todoMd, openRow.modelData.line, text));
-                                }
-                            }
-                            Keys.onPressed: (event) => {
-                                if (event.key === Qt.Key_Backspace && text.length === 0) {
-                                    root.commit(TodoHelper.removeItem(root.todoMd, openRow.modelData.line));
-                                    event.accepted = true;
-                                }
+                    function slotAt(y: real): int {
+                        let n = 0;
+                        for (let i = 0; i < openRepeater.count; ++i) {
+                            const it = openRepeater.itemAt(i);
+                            if (it && y > it.y + it.height / 2) {
+                                n = i + 1;
                             }
                         }
-
-                        DueChip {
-                            id: dueChip
-                            visible: openRow.modelData.due.length > 0
-                            due: openRow.modelData.due
-                            onClicked: {
-                                dueDialog.line = openRow.modelData.line;
-                                dueDialog.openAt(dueChip, openRow.modelData.due);
-                            }
-                        }
-
-                        QQC2.ToolButton {
-                            id: addDueButton
-                            visible: openRow.modelData.due.length === 0
-                            icon.name: "view-calendar"
-                            display: QQC2.AbstractButton.IconOnly
-                            text: i18nc("@action:button", "Set due date")
-                            flat: true
-                            opacity: hovered || itemField.activeFocus ? 0.8 : 0.25
-                            implicitWidth: Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing * 2
-                            implicitHeight: implicitWidth
-                            onClicked: {
-                                dueDialog.line = openRow.modelData.line;
-                                dueDialog.openAt(addDueButton, "");
-                            }
-
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: text
-                            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                        return n;
+                    }
+                    function finishDrag(line: int): void {
+                        const from = dragFrom;
+                        const to = slot > from ? slot - 1 : slot;
+                        dragFrom = -1;
+                        slot = -1;
+                        if (from >= 0 && to >= 0 && to !== from) {
+                            root.commit(TodoHelper.moveItem(root.todoMd, line, to));
                         }
                     }
 
-                    // Indented lines under the item (notes, sub-items), shown as written.
-                    QQC2.Label {
-                        visible: openRow.modelData.notes.length > 0
-                        Layout.fillWidth: true
-                        Layout.leftMargin: openCheck.width + Kirigami.Units.smallSpacing
-                        Layout.bottomMargin: Kirigami.Units.smallSpacing
-                        text: openRow.modelData.notes.split("\n").map(l => l.trim()).join("\n")
-                        wrapMode: Text.Wrap
-                        font: Kirigami.Theme.smallFont
-                        color: Kirigami.Theme.disabledTextColor
+                    Repeater {
+                        id: openRepeater
+                        model: root.todo.open
+
+                        delegate: ColumnLayout {
+                            id: openRow
+
+                            required property var modelData
+                            required property int index
+
+                            Layout.fillWidth: true
+                            spacing: 0
+                            opacity: openList.dragFrom === openRow.index ? 0.35 : 1
+
+                            HoverHandler {
+                                id: rowHover
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                // Drag to reorder (the block switches to manual order).
+                                Item {
+                                    id: grip
+                                    implicitWidth: Kirigami.Units.gridUnit
+                                    Layout.fillHeight: true
+                                    opacity: gripArea.containsMouse || gripArea.pressed ? 0.9 : (rowHover.hovered || itemField.activeFocus ? 0.35 : 0)
+                                    Behavior on opacity { NumberAnimation { duration: Kirigami.Units.shortDuration } }
+
+                                    Text {
+                                        text: "\u205D\u205D"
+                                        color: Kirigami.Theme.textColor
+                                        anchors.centerIn: parent
+                                    }
+
+                                    MouseArea {
+                                        id: gripArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        preventStealing: true
+                                        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                        onPressed: {
+                                            openList.dragFrom = openRow.index;
+                                            openList.slot = openRow.index;
+                                        }
+                                        onPositionChanged: (mouse) => {
+                                            if (pressed) {
+                                                openList.slot = openList.slotAt(mapToItem(openList, mouse.x, mouse.y).y);
+                                            }
+                                        }
+                                        onReleased: openList.finishDrag(openRow.modelData.line)
+                                        onCanceled: openList.dragFrom = -1
+
+                                        QQC2.ToolTip.visible: containsMouse && !pressed
+                                        QQC2.ToolTip.text: i18nc("@info:tooltip", "Drag to reorder")
+                                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                                    }
+                                }
+
+                                QQC2.CheckBox {
+                                    id: openCheck
+                                    checked: false
+                                    onClicked: root.commit(TodoHelper.toggle(root.todoMd, openRow.modelData.line))
+
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: i18nc("@info:tooltip", "Mark as done")
+                                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                                }
+
+                                QQC2.TextField {
+                                    id: itemField
+
+                                    Layout.fillWidth: true
+                                    text: openRow.modelData.text
+                                    placeholderText: i18nc("@info:placeholder", "To-do")
+                                    background: null
+                                    leftPadding: 0
+                                    font.pointSize: root.fontSize
+                                    font.family: Config.editorFont.family
+
+                                    onEditingFinished: {
+                                        if (text !== openRow.modelData.text) {
+                                            root.commit(TodoHelper.setText(root.todoMd, openRow.modelData.line, text));
+                                        }
+                                    }
+                                    Keys.onPressed: (event) => {
+                                        if (event.key === Qt.Key_Backspace && text.length === 0) {
+                                            root.commit(TodoHelper.removeItem(root.todoMd, openRow.modelData.line));
+                                            event.accepted = true;
+                                        }
+                                    }
+                                }
+
+                                DueChip {
+                                    id: dueChip
+                                    visible: openRow.modelData.due.length > 0
+                                    due: openRow.modelData.due
+                                    onClicked: {
+                                        dueDialog.line = openRow.modelData.line;
+                                        dueDialog.openAt(dueChip, openRow.modelData.due);
+                                    }
+                                }
+
+                                QQC2.ToolButton {
+                                    id: addDueButton
+                                    visible: openRow.modelData.due.length === 0
+                                    icon.name: "view-calendar"
+                                    display: QQC2.AbstractButton.IconOnly
+                                    text: i18nc("@action:button", "Set due date")
+                                    flat: true
+                                    opacity: hovered || itemField.activeFocus ? 0.8 : 0.25
+                                    implicitWidth: Kirigami.Units.iconSizes.small + Kirigami.Units.smallSpacing * 2
+                                    implicitHeight: implicitWidth
+                                    onClicked: {
+                                        dueDialog.line = openRow.modelData.line;
+                                        dueDialog.openAt(addDueButton, "");
+                                    }
+
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: text
+                                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                                }
+                            }
+
+                            // Indented lines under the item (notes, sub-items), shown as written.
+                            QQC2.Label {
+                                visible: openRow.modelData.notes.length > 0
+                                Layout.fillWidth: true
+                                Layout.leftMargin: grip.width + openCheck.width + Kirigami.Units.smallSpacing * 2
+                                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                                text: openRow.modelData.notes.split("\n").map(l => l.trim()).join("\n")
+                                wrapMode: Text.Wrap
+                                font: Kirigami.Theme.smallFont
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+                        }
+                    }
+                }
+
+                // Where the dragged row would land.
+                Rectangle {
+                    visible: openList.dragFrom >= 0 && openList.slot >= 0 && openList.slot !== openList.dragFrom && openList.slot !== openList.dragFrom + 1
+                    x: Kirigami.Units.gridUnit
+                    width: parent.width - x
+                    height: 2
+                    radius: 1
+                    color: Kirigami.Theme.highlightColor
+                    y: {
+                        if (openList.slot < 0 || openRepeater.count === 0) {
+                            return 0;
+                        }
+                        const it = openRepeater.itemAt(Math.min(openList.slot, openRepeater.count - 1));
+                        return (openList.slot < openRepeater.count ? it.y : it.y + it.height) - 1;
                     }
                 }
             }
@@ -238,6 +335,7 @@ BlockTemplate {
             // Add item.
             RowLayout {
                 Layout.fillWidth: true
+                Layout.leftMargin: Kirigami.Units.gridUnit + Kirigami.Units.smallSpacing // under the checkboxes, past the grips
                 spacing: Kirigami.Units.smallSpacing
 
                 Kirigami.Icon {
@@ -271,6 +369,7 @@ BlockTemplate {
             QQC2.AbstractButton {
                 id: doneHeader
                 visible: root.todo.done.length > 0
+                Layout.leftMargin: Kirigami.Units.gridUnit + Kirigami.Units.smallSpacing
                 Layout.topMargin: Kirigami.Units.smallSpacing
                 hoverEnabled: true
                 onClicked: root.doneExpanded = !root.doneExpanded
@@ -300,6 +399,7 @@ BlockTemplate {
                     required property var modelData
 
                     Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.gridUnit + Kirigami.Units.smallSpacing
                     spacing: Kirigami.Units.smallSpacing
 
                     QQC2.CheckBox {

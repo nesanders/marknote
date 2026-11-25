@@ -50,6 +50,9 @@ class TodoTest : public QObject
         } else if (type == u"add"_s) {
             o.type = TodoBlock::Op::Add;
             o.text = op[u"text"_s].toString();
+        } else if (type == u"move"_s) {
+            o.type = TodoBlock::Op::Move;
+            o.to = op[u"to"_s].toInt();
         } else {
             return u"<unknown op>"_s;
         }
