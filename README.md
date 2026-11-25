@@ -53,6 +53,11 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
   Markdown shortcut; the *Insert* menu inserts the same blocks.
 - **Autosave after every edit**, including the paragraph you are still typing in
   (upstream only saved after the first change, or when you left the block).
+- **To-do blocks** (`/` › *To-do list*, or *Make To-Do Block* on a checklist): ticked items
+  move to the top of a collapsible *Done* section with the date they were done; unticking
+  puts them back at the bottom. Optional due dates with a picker (orange today, red when
+  overdue), and each block is ordered by hand or by due date. Plain Markdown, the same on
+  desktop and web: [docs/todo.md](docs/todo.md).
 
 **Storage**
 - **Image links are relative to the note**, so a notebook folder can be copied, synced or
@@ -123,7 +128,8 @@ Built on current KDE `master` (which includes the GSoC 2026 block editor), plus
 **Web app for phones** (folder [`web/`](web/README.md))
 - An installable web app (PWA) for Android and iPhone that opens the same notebooks from
   Google Drive: tree with drag and drop, tags, filter, icons, notes with math, Mermaid
-  diagrams and images, a live-preview Markdown editor with a `/` menu, photo upload,
+  diagrams and images, a live-preview Markdown editor with a `/` menu, to-do blocks,
+  block handles to drag (or tap to move) paragraphs, list items and other blocks, photo upload,
   an offline copy with edits uploaded later, conflict copies instead of overwrites, and
   encrypted notebooks (unlock, read, edit). Try it with `?demo` (its “Private” notebook is
   encrypted, password `demo password`); setup is in [web/README.md](web/README.md).
