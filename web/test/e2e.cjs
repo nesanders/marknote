@@ -477,6 +477,49 @@ async function demoTodo(browser, errors) {
     await ctx.close();
 }
 
+async function demoBlockMenu(browser, errors) {
+    const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+    const page = await ctx.newPage();
+    watch(page, errors);
+    await page.goto(BASE + '?demo');
+    await page.click('.notebook:has-text("Projects")');
+    await page.click('.row:has-text("Scratch")');
+    await page.getByRole('button', { name: 'Edit note' }).click();
+    await page.waitForSelector('.cm-content');
+    // The raw text, read from the Source view.
+    const doc = async () => {
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.waitForSelector('.cm-source');
+        const text = (await page.locator('.cm-line').allTextContents()).join('\n');
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.waitForSelector('.cm-live');
+        return text;
+    };
+    // The cursor in the paragraph: To-do list turns it into a to-do block.
+    const para = page.locator('.cm-line', { hasText: 'A plain note' });
+    const box = await para.boundingBox();
+    await page.touchscreen.tap(box.x + box.width - 10, box.y + box.height / 2);
+    await page.getByRole('button', { name: 'Block type' }).tap();
+    await page.waitForSelector('.block-menu');
+    assert.equal(await page.locator('.block-menu button.on span').textContent(), 'Text');
+    await shot(page, 'phone-block-menu-toolbar');
+    await page.locator('.block-menu button', { hasText: 'To-do list' }).tap();
+    assert.match(await doc(), /<!-- marknote-todo -->\n- \[ \] A plain note without front matter\./);
+    await page.waitForSelector('.cm-todo-head');
+    // Blocks that are not text go below the current line.
+    await page.getByRole('button', { name: 'Block type' }).tap();
+    await page.locator('.block-menu button', { hasText: 'Code block' }).tap();
+    await page.keyboard.type('let x = 1;');
+    assert.match(await doc(), /```\nlet x = 1;\n```/);
+    // And headings convert the line in place.
+    await page.locator('.cm-line', { hasText: 'Scratch' }).first().tap();
+    await page.getByRole('button', { name: 'Block type' }).tap();
+    assert.equal(await page.locator('.block-menu button.on span').textContent(), 'Heading 1');
+    await page.locator('.block-menu button', { hasText: 'Heading 2' }).tap();
+    assert.match(await doc(), /^## Scratch/);
+    await ctx.close();
+}
+
 async function demoManualOrder(browser, errors) {
     const page = await browser.newPage({ viewport: { width: 1360, height: 820 } });
     watch(page, errors);
@@ -643,7 +686,7 @@ async function realMode(browser, errors) {
 (async () => {
     const browser = await chromium.launch();
     const errors = [];
-    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
+    const steps = [['demo desktop', demoDesktop], ['demo rich notes', demoRich], ['demo drag and drop', demoDrag], ['demo phone', demoPhone], ['demo block handles', demoBlockHandles], ['demo to-do block', demoTodo], ['demo block menu', demoBlockMenu], ['demo manual order', demoManualOrder], ['demo encrypted notebook', demoEncrypted], ['real mode', realMode]];
     let failed = false;
     for (const [name, fn] of steps.filter(([n]) => !process.env.E2E_ONLY || n.includes(process.env.E2E_ONLY))) {
         try {

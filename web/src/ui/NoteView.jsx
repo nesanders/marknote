@@ -6,6 +6,7 @@ import * as FM from '../frontmatter.js';
 import { renderMarkdown } from '../markdown.js';
 import * as Todo from '../todo.js';
 import { openDuePicker } from './duepicker.js';
+import { blockTypes, currentBlockType, applyBlockType } from './slash.js';
 import { enhance } from '../extras.js';
 import { Editor, actions } from './Editor.jsx';
 import { Icon, ItemIcon } from './icons.jsx';
@@ -42,6 +43,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
     const articleRef = useRef(null);
     const fileInput = useRef(null);
     const [uploading, setUploading] = useState(0);
+    const [blockMenu, setBlockMenu] = useState(null); // {current} while the toolbar's block menu is open
 
     const resolveImage = async (src) => {
         const r = library.resolveImage(item.id, src);
@@ -273,7 +275,32 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
                             addImages([...e.target.files]);
                             e.target.value = '';
                         }} />
+                    {blockMenu && (
+                        <div class="block-menu-overlay" onMouseDown={(e) => e.preventDefault()} onClick={() => setBlockMenu(null)}>
+                            <div class="block-menu" role="menu" aria-label="Block type" onClick={(e) => e.stopPropagation()}>
+                                {['Text', 'Lists', 'Blocks'].map((section) => (
+                                    <>
+                                        <div class="block-menu-section">{section}</div>
+                                        {blockTypes.filter((b) => b.section === section).map((b) => (
+                                            <button role="menuitemradio" aria-checked={blockMenu.current === b.label} class={blockMenu.current === b.label ? 'on' : ''}
+                                                onClick={() => {
+                                                    setBlockMenu(null);
+                                                    if (viewRef.current) applyBlockType(viewRef.current, b.label, () => fileInput.current?.click());
+                                                }}>
+                                                <span>{b.label}</span>{b.hint && <code>{b.hint}</code>}
+                                            </button>
+                                        ))}
+                                    </>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div class="format-bar" role="toolbar" aria-label="Formatting">
+                        <button class={'icon-button block-type' + (blockMenu ? ' active' : '')} aria-label="Block type" title="Block type: change this block or insert one"
+                            aria-haspopup="menu" aria-expanded={!!blockMenu} onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setBlockMenu(blockMenu ? null : { current: viewRef.current ? currentBlockType(viewRef.current.state) : null })}>
+                            <Icon name="plus" />
+                        </button>
                         {[['bold', 'Bold'], ['italic', 'Italic'], ['heading', 'Heading'], ['bullet', 'List', 'list'], ['task', 'Checklist', 'checklist'], ['quote', 'Quote'], ['code', 'Code'], ['link', 'Link'], ['image', 'Image', 'image']].map(([a, label, icon]) => (
                             <button class="icon-button" aria-label={label} title={label} onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => (a === 'image' ? fileInput.current?.click() : viewRef.current && actions[a](viewRef.current))}>

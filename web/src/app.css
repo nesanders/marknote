@@ -537,3 +537,19 @@ input.mono { font-family: ui-monospace, 'Noto Sans Mono', monospace; letter-spac
 .cm-make-todo { font: inherit; font-family: var(--sans); font-size: 0.75rem; margin-left: 0.6rem; padding: 0 0.5rem; min-height: 0; border: 1px solid var(--border); border-radius: 999px; background: var(--view-bg); color: var(--muted); cursor: pointer; }
 .cm-make-todo:hover { color: var(--text); border-color: var(--accent); }
 .cm-due, .cm-due-add { margin-left: 0.4rem; }
+
+/* The toolbar's block menu: every block type, like the / menu. */
+.block-menu-overlay { position: fixed; inset: 0; z-index: 30; }
+.block-menu {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(3.4rem + env(safe-area-inset-bottom));
+    width: min(18rem, calc(100vw - 1rem)); max-height: min(30rem, 70vh); overflow-y: auto;
+    background: var(--view-bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 0.3rem;
+}
+.block-menu-section { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 0.5rem 0.6rem 0.15rem; }
+.block-menu button {
+    display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 1rem; text-align: left;
+    background: none; border: none; border-radius: var(--radius); padding: 0.45rem 0.6rem; font: inherit; color: var(--text); cursor: pointer; min-height: 2.4rem;
+}
+.block-menu button:hover { background: var(--hover); }
+.block-menu button.on { background: var(--selection); }
+.block-menu code { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }

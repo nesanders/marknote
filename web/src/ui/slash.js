@@ -4,6 +4,9 @@
 // "/" at the start of a line offers blocks to insert, like the desktop app's
 // slash menu, each with its Markdown shortcut as a hint.
 
+import * as Todo from '../todo.js';
+import { dispatchBody } from './todoedit.js';
+
 /** [label, section, markdown hint, text to insert ("|" marks the cursor)] */
 const BLOCKS = [
     ['Text', 'Text', '', '|'],
@@ -67,4 +70,71 @@ export function slashSource(onImage) {
             })),
         };
     };
+}
+
+// ---- The toolbar's block menu ------------------------------------------------
+
+/** Line-prefix blocks: picking one turns the selected lines into it. */
+const PREFIX = { Text: '', 'Heading 1': '# ', 'Heading 2': '## ', 'Heading 3': '### ', Quote: '> ', 'Bulleted list': '- ', 'Numbered list': '1. ', Checklist: '- [ ] ', 'To-do list': '- [ ] ' };
+const ANY_PREFIX = /^(#{1,6} |[-*+] \[[ xX]\] |[-*+] |\d+[.)] |> )?/;
+
+/** Blocks for the toolbar menu: [{label, section, hint}], in slash-menu order. */
+export const blockTypes = BLOCKS.map(([label, section, hint]) => ({ label, section, hint: label === 'To-do list' ? '' : hint }));
+
+/** The block type of the line with the cursor (for the menu's tick). */
+export function currentBlockType(state) {
+    const line = state.doc.lineAt(state.selection.main.head);
+    const text = line.text;
+    if (/^#{1} /.test(text)) return 'Heading 1';
+    if (/^#{2} /.test(text)) return 'Heading 2';
+    if (/^#{3} /.test(text)) return 'Heading 3';
+    if (/^> /.test(text)) return 'Quote';
+    if (/^\s*[-*+] \[[ xX]\] /.test(text)) {
+        return Todo.locate(state.doc.toString(), line.number - 1) ? 'To-do list' : 'Checklist';
+    }
+    if (/^\s*[-*+] /.test(text)) return 'Bulleted list';
+    if (/^\s*\d+[.)] /.test(text)) return 'Numbered list';
+    return text.trim() ? 'Text' : null;
+}
+
+/**
+ * Applies a block type from the toolbar: text-like blocks convert the
+ * selected lines (a checklist becomes a to-do block); the others are
+ * inserted on a new line below, or in place of an empty line.
+ */
+export function applyBlockType(view, label, onImage) {
+    const { state } = view;
+    const sel = state.selection.main;
+    const first = state.doc.lineAt(sel.from);
+    const last = state.doc.lineAt(sel.to);
+    if (label in PREFIX) {
+        const body = state.doc.toString();
+        if (label === 'To-do list' && Todo.locate(body, first.number - 1)) return view.focus();
+        const prefix = PREFIX[label];
+        const changes = [];
+        for (let n = first.number; n <= last.number; ++n) {
+            const line = state.doc.line(n);
+            if (!line.text.trim() && first.number !== last.number) continue;
+            const old = line.text.match(ANY_PREFIX)[0];
+            changes.push({ from: line.from, to: line.from + old.length, insert: prefix });
+        }
+        view.dispatch({ changes, selection: { anchor: changes.length === 1 ? first.from + prefix.length + (first.text.length - first.text.match(ANY_PREFIX)[0].length) : sel.anchor } });
+        if (label === 'To-do list') {
+            const made = Todo.makeBlock(view.state.doc.toString(), view.state.doc.lineAt(view.state.selection.main.head).number - 1);
+            if (made !== null) dispatchBody(view, made);
+        }
+        return view.focus();
+    }
+    const insert = BLOCKS.find(([l]) => l === label)?.[3];
+    if (insert === null) return onImage?.();
+    if (insert === undefined) return undefined;
+    const at = insert.indexOf('|');
+    const text = insert.replace('|', '');
+    if (!last.text.trim()) {
+        view.dispatch({ changes: { from: last.from, to: last.to, insert: text }, selection: { anchor: last.from + at } });
+    } else {
+        const pre = '\n\n';
+        view.dispatch({ changes: { from: last.to, insert: pre + text }, selection: { anchor: last.to + pre.length + at } });
+    }
+    return view.focus();
 }
