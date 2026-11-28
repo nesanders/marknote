@@ -44,8 +44,14 @@ Item {
             text: i18nc("@action:inmenu due date", "Pick a Date…")
             icon.name: "view-calendar"
             onTriggered: {
-                const date = TodoHelper.toDate(root.currentDue.length > 0 ? root.currentDue : TodoHelper.today());
+                // A local date from "YYYY-MM-DD" (a UTC one can show the day before).
+                const [y, m, d] = (root.currentDue.length > 0 ? root.currentDue : TodoHelper.today()).split("-").map(Number);
+                const date = new Date(y, m - 1, d);
                 datePopup.value = date;
+                // The popup's picker no longer follows `value` once used: set it too.
+                if (datePopup.contentItem && datePopup.contentItem.selectedDate !== undefined) {
+                    datePopup.contentItem.selectedDate = date;
+                }
                 datePopup.open();
             }
         }

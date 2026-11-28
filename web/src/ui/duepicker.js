@@ -68,13 +68,21 @@ export function openDuePicker(anchor, due, onPick) {
 
     const outside = (e) => !pop.contains(e.target) && !anchor.contains(e.target) && closeDuePicker();
     const key = (e) => e.key === 'Escape' && closeDuePicker();
-    setTimeout(() => document.addEventListener('pointerdown', outside, true));
+    // Scrolling the note moves the anchor away; scrolling inside the picker is fine.
+    const scrolled = (e) => !pop.contains(e.target) && closeDuePicker();
+    let closed = false;
+    // Not for the click that opened it (still being dispatched).
+    const later = setTimeout(() => !closed && document.addEventListener('pointerdown', outside, true));
     document.addEventListener('keydown', key);
+    document.addEventListener('scroll', scrolled, true);
     window.addEventListener('resize', closeDuePicker);
     current = () => {
+        closed = true;
+        clearTimeout(later);
         pop.remove();
         document.removeEventListener('pointerdown', outside, true);
         document.removeEventListener('keydown', key);
+        document.removeEventListener('scroll', scrolled, true);
         window.removeEventListener('resize', closeDuePicker);
     };
 }

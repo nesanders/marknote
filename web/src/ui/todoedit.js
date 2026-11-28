@@ -9,7 +9,7 @@
 import { Prec, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType } from '@codemirror/view';
 import * as Todo from '../todo.js';
-import { openDuePicker } from './duepicker.js';
+import { openDuePicker, closeDuePicker } from './duepicker.js';
 
 /** Replaces the document with `body`, as one minimal change (keeps undo tidy and the cursor put). */
 export function dispatchBody(view, body) {
@@ -140,8 +140,8 @@ class DueWidget extends WidgetType {
         }
         b.addEventListener('mousedown', (e) => e.preventDefault());
         b.addEventListener('click', () => {
-            const line = lineOf(view, b);
-            openDuePicker(b, this.due, (date) => applyInEditor(view, { type: 'due', line, date }));
+            // The item's line when the date is picked (the note may have changed meanwhile).
+            openDuePicker(b, this.due, (date) => b.isConnected && applyInEditor(view, { type: 'due', line: lineOf(view, b), date }));
         });
         return b;
     }
@@ -259,7 +259,23 @@ const decorations = StateField.define({
     provide: (f) => [EditorView.decorations.from(f), EditorView.atomicRanges.of((view) => view.state.field(f))],
 });
 
+// Typing at the end of a folded part (a collapsed Done section, the end of
+// the block) would add to its hidden HTML and break it: start a new
+// paragraph after the block instead.
+const keepOutOfFolds = EditorView.inputHandler.of((view, from, to, text) => {
+    let end = null;
+    view.state.field(decorations).between(from, from, (a, b, value) => {
+        if (value.spec.block && from > a && from <= b) end = b;
+    });
+    if (end === null) return false;
+    const insert = `\n\n${text}`;
+    view.dispatch({ changes: { from: end, insert }, selection: { anchor: end + insert.length }, userEvent: 'input.type' });
+    return true;
+});
+
+const closePickerOnEdit = EditorView.updateListener.of((u) => u.docChanged && closeDuePicker());
+
 /** The editor extension (live mode only). */
 export function todoBlocks() {
-    return [openDone, Prec.high(decorations)];
+    return [openDone, Prec.high(decorations), keepOutOfFolds, closePickerOnEdit];
 }

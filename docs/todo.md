@@ -34,8 +34,18 @@ The block ends after `</details>`, or after the open list when there is no Done
 section. Anything else ends the block early; what was read so far is still a
 valid block.
 
-An **item** is a task line (`- [ ]`, `- [x]`, also `*`/`+` bullets) plus any
-following indented lines (notes, sub-items), which travel with it.
+An **item** is a task line (`- [ ]`, `- [x]`, also `*`/`+` bullets) plus the
+lines that belong to it and travel with it: lines indented deeper than the
+first item (notes, sub-items, even when they are task lines themselves), lazily
+wrapped lines, and blank lines inside the list. A sub-item's checkbox ticks the
+sub-item in place; only the items themselves move to Done.
+
+The marker must be exactly `marknote-todo` (not `marknote-todo-list`), the
+Done section must be summarised as `Done (n)` (another `<details>` after the
+list is left alone; `<details open>` is kept), markers inside code fences are
+ignored (CommonMark fence rules), and Windows line ends are kept. If the line
+after the block is not blank, a blank line is added so it does not join the
+block.
 
 ## Dates
 
@@ -43,6 +53,7 @@ Dates use the [Obsidian Tasks](https://publish.obsidian.md/tasks/) emoji form so
 other tools understand them:
 
 - `📅 YYYY-MM-DD`: due date, optional, on open or done items. Kept on completion.
+  Dates are only read at the end of the item's line (not inside its text or code).
 - `✅ YYYY-MM-DD`: completion date, on every done item.
 
 They are written at the end of the item's first line, due first, then done.

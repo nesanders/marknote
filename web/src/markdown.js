@@ -167,11 +167,11 @@ function dueChip(item, line, today) {
 }
 
 function todoItem(item, today) {
-    const extra = item.extra.length ? md.render(item.extra.map((l) => l.replace(/^ {1,4}|^\t/, '')).join('\n'), { lineOffset: item.line + 1 }) : '';
+    const extra = item.extra.length ? md.render(item.extra.map((l) => l.replace(/^ {1,4}|^\t/, '')).join('\n'), { lineOffset: item.line + 1, references: noteRefs }) : '';
     const done = item.done ? `<span class="done-date" title="Completed ${item.done}">✓ ${esc(dueInfo(item.done, today).label)}</span>` : '';
     return `<li class="task-item todo-item${item.checked ? ' checked' : ''}"><div class="todo-row">`
         + `<input type="checkbox" class="task" data-line="${item.line}"${item.checked ? ' checked' : ''}> `
-        + `<span class="todo-text">${md.renderInline(item.text)}</span>${dueChip(item, item.line, today)}${done}</div>${extra}</li>`;
+        + `<span class="todo-text">${md.renderInline(item.text, { references: noteRefs })}</span>${dueChip(item, item.line, today)}${done}</div>${extra}</li>`;
 }
 
 /** HTML for one to-do block (docs/todo.md); data-line attributes point into the body. */
@@ -190,18 +190,33 @@ function renderTodo(block, today) {
 }
 
 /** Renders the body, with to-do blocks drawn by renderTodo and the rest by markdown-it. */
+// Link reference definitions of the note being rendered ("[x]: https://…"),
+// shared by all its parts: to-do blocks split the note into several renders.
+let noteRefs;
+
 function renderWithTodos(body, today = localToday()) {
     const blocks = findBlocks(body);
     if (!blocks.length) return md.render(body);
+    const env = {};
+    md.parse(body, env);
+    noteRefs = env.references ?? {};
+    try {
+        return renderParts(body, blocks, today);
+    } finally {
+        noteRefs = undefined;
+    }
+}
+
+function renderParts(body, blocks, today) {
     const lines = body.split('\n');
     let html = '';
     let at = 0;
     for (const b of blocks) {
-        if (b.start > at) html += md.render(lines.slice(at, b.start).join('\n'), { lineOffset: at });
+        if (b.start > at) html += md.render(lines.slice(at, b.start).join('\n'), { lineOffset: at, references: noteRefs });
         html += renderTodo(b, today);
         at = b.end;
     }
-    if (at < lines.length) html += md.render(lines.slice(at).join('\n'), { lineOffset: at });
+    if (at < lines.length) html += md.render(lines.slice(at).join('\n'), { lineOffset: at, references: noteRefs });
     return html;
 }
 

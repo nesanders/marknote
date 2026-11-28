@@ -42,6 +42,7 @@ struct Block {
     QList<Item> open;
     QList<Item> done;
     int doneStart = -1;
+    bool detailsOpen = false; ///< written as <details open>
 };
 
 struct Location {

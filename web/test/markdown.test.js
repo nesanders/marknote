@@ -43,3 +43,9 @@ test('desktop file:// image links are kept for resolving; script links are not',
     assert.match(render('![](file:///home/me/Notes/P/a%20b.png)'), /<img data-src="file:\/\/\/home\/me\/Notes\/P\/a%20b.png"/);
     assert.doesNotMatch(render('[x](javascript:alert(1))'), /href="javascript/);
 });
+
+test('reference links work in notes with to-do blocks', async () => {
+    const { renderUnsafeForTests } = await import('../src/markdown.js');
+    const html = renderUnsafeForTests('[x]: https://example.com\n\n<!-- marknote-todo -->\n- [ ] see [x]\n\nmore [x]');
+    assert.equal(html.match(/<a href="https:\/\/example.com">x<\/a>/g)?.length, 2);
+});

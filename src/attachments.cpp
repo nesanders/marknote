@@ -37,7 +37,17 @@ bool isTarget(const QString &href)
         return false;
     }
     const QString path = decode(href);
-    return !path.isEmpty() && !path.endsWith(u".md"_s, Qt::CaseInsensitive);
+    // The file is in the note's folder or below it: no absolute paths (also
+    // when encoded, "%2Fetc") and no ".." steps out of it.
+    static const QRegularExpression driveRe(u"^[a-z]:[/\\\\]"_s, QRegularExpression::CaseInsensitiveOption);
+    if (path.isEmpty() || path.startsWith(u'/') || path.startsWith(u'\\') || driveRe.match(path).hasMatch()) {
+        return false;
+    }
+    const QStringList segments = QString(path).replace(u'\\', u'/').split(u'/');
+    if (segments.contains(u".."_s)) {
+        return false;
+    }
+    return !path.endsWith(u".md"_s, Qt::CaseInsensitive);
 }
 
 std::optional<Attachment> parse(const QString &markdown)
@@ -69,12 +79,13 @@ QString encodePath(const QString &fileName)
 {
     // Unreserved characters stay; so do a few that are safe in a link target.
     // Spaces and parentheses are encoded, so the link needs no <...>.
-    return QString::fromUtf8(QUrl::toPercentEncoding(fileName, "/!$&'*+,;=:@"));
+    // ":" is encoded: "a:b.pdf" would otherwise read as a URL scheme.
+    return QString::fromUtf8(QUrl::toPercentEncoding(fileName, "/!$&'*+,;=@"));
 }
 
 QString markdown(const QString &name, const QString &link)
 {
-    static const QRegularExpression bracketsRe(u"[\\[\\]]"_s);
+    static const QRegularExpression bracketsRe(u"[\\[\\]\\\\]"_s); // brackets and backslashes would break the link
     static const QRegularExpression needsAngleRe(u"[\\s()]"_s);
     QString cleanName = name;
     cleanName.remove(bracketsRe);

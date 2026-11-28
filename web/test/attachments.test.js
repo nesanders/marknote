@@ -42,3 +42,22 @@ test('rendered as a card placeholder', () => {
     assert.match(html, /<div class="attachment" data-attachment="Itinerary.pdf" data-name="Itinerary.pdf" data-line="2">/);
     assert.match(html, /<li>.*<a href="x.pdf">📎 in a list<\/a>/s);
 });
+
+test('attachments stay inside the note folder', () => {
+    assert.equal(parseAttachment('[📎 x](%2Fetc%2Fpasswd)'), null);
+    assert.equal(parseAttachment('[📎 x](../../.ssh/id_rsa)'), null);
+    assert.equal(parseAttachment('[📎 x](%2e%2e/secret.txt)'), null);
+    assert.equal(parseAttachment('[📎 x](C:%5Cwin.ini)'), null);
+    assert.ok(parseAttachment('[📎 x](sub/ok.pdf)'));
+    assert.equal(attachmentMarkdown('back\\slash[1]', 'a.pdf'), '[📎 backslash1](a.pdf)');
+});
+
+test('names with # ? : % are written and found again', async () => {
+    const { encodeLinkPath, resolveAssetPath } = await import('../src/library.js');
+    const files = new Map([['Invoice #12.pdf', {}], ['what?.pdf', {}], ['a:b.pdf', {}], ['100%.pdf', {}]]);
+    for (const name of files.keys()) {
+        const link = encodeLinkPath(name);
+        assert.ok(parseAttachment(`[📎 ${name}](${link})`), link);
+        assert.deepEqual(resolveAssetPath(link, 'Note.md', 'NB', files), { path: name });
+    }
+});

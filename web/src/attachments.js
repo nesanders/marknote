@@ -9,13 +9,16 @@ const LINE_RE = /^\s*\[📎\s?([^\]\n]*)\]\(\s*(<[^>\n]+>|[^\s)]+)\s*\)\s*$/u;
 /** Whether a link target can be an attachment: a relative path to a file that is not a note. */
 export function isAttachmentTarget(href) {
     if (!href || href.startsWith('#') || href.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(href)) return false;
-    let path = href;
+    let path = href.replace(/[?#].*$/, '');
     try {
-        path = decodeURI(href);
+        path = decodeURIComponent(path);
     } catch {
         // keep as written
     }
-    return !/\.md$/i.test(path.split(/[?#]/)[0]);
+    // The file is in the note's folder or below it: no absolute paths (also
+    // when encoded, "%2Fetc") and no ".." steps out of it.
+    if (/^([/\\]|[a-z]:[/\\])/i.test(path) || path.replaceAll('\\', '/').split('/').includes('..')) return false;
+    return !/\.md$/i.test(path);
 }
 
 /** {name, href} when a line (or paragraph) is an attachment, else null. */
@@ -27,7 +30,7 @@ export function parseAttachment(text) {
     let name = m[1].trim();
     if (!name) {
         try {
-            name = decodeURI(href).split('/').pop();
+            name = decodeURIComponent(href.replace(/[?#].*$/, '')).split('/').pop();
         } catch {
             name = href.split('/').pop();
         }
@@ -37,7 +40,8 @@ export function parseAttachment(text) {
 
 /** The Markdown for an attached file. */
 export function attachmentMarkdown(name, link) {
-    return `[📎 ${name.replace(/[[\]]/g, '')}](${/[\s()]/.test(link) ? `<${link}>` : link})`;
+    // Brackets and backslashes in the name would break the link.
+    return `[📎 ${name.replace(/[[\]\\]/g, '')}](${/[\s()]/.test(link) ? `<${link}>` : link})`;
 }
 
 const KINDS = [

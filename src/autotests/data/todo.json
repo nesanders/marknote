@@ -37,7 +37,7 @@
       "input": "<!-- marknote-todo -->\n- [ ] Renew passport 📅 2026-12-01\n  Photo booth on Main St\n- [ ] Other",
       "op": {
         "type": "toggle",
-        "line": 2
+        "line": 1
       },
       "expected": "<!-- marknote-todo -->\n- [ ] Other\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] Renew passport 📅 2026-12-01 ✅ 2026-11-25\n  Photo booth on Main St\n\n</details>"
     },
@@ -189,6 +189,159 @@
         "to": 0
       },
       "expected": "<!-- marknote-todo -->\n- [ ] Undated\n- [ ] Soon 📅 2026-11-28\n- [ ] Later 📅 2026-12-30"
+    },
+    {
+      "name": "a sub-item checkbox is ticked in place, not the parent",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] Parent\n    - [ ] Child\n- [ ] Other",
+      "op": {
+        "type": "toggle",
+        "line": 2
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] Parent\n    - [x] Child\n- [ ] Other"
+    },
+    {
+      "name": "sub-items indented two spaces travel with their parent",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] Parent\n  - [ ] Child\n- [ ] Other",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] Other\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] Parent ✅ 2026-11-28\n  - [ ] Child\n\n</details>"
+    },
+    {
+      "name": "Windows line ends are kept",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\r\n- [ ] A\r\n- [ ] B\r\n",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\r\n- [ ] B\r\n\r\n<details>\r\n<summary>Done (1)</summary>\r\n\r\n- [x] A ✅ 2026-11-28\r\n\r\n</details>\r\n"
+    },
+    {
+      "name": "blank lines inside an item stay with it",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n    para1\n\n    para2\n- [ ] B",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] B\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] A ✅ 2026-11-28\n    para1\n\n    para2\n\n</details>"
+    },
+    {
+      "name": "a loose list stays one block",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n\n- [ ] B\n\nAfter",
+      "op": {
+        "type": "toggle",
+        "line": 3
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] B ✅ 2026-11-28\n\n</details>\n\nAfter"
+    },
+    {
+      "name": "a lazily wrapped line stays with its item",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A long item\nwrapped lazily\n- [ ] B",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] B\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] A long item ✅ 2026-11-28\nwrapped lazily\n\n</details>"
+    },
+    {
+      "name": "dates are only read at the end of the line",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] run `date -d 📅 2026-01-01` now\n- [ ] B",
+      "op": {
+        "type": "toggle",
+        "line": 2
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] run `date -d 📅 2026-01-01` now\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] B ✅ 2026-11-28\n\n</details>"
+    },
+    {
+      "name": "a marker inside a longer code fence is not a block",
+      "today": "2026-11-28",
+      "input": "````md\n```\n<!-- marknote-todo -->\n- [ ] x\n```\n````",
+      "op": {
+        "type": "toggle",
+        "line": 3
+      },
+      "expected": "````md\n```\n<!-- marknote-todo -->\n- [x] x\n```\n````"
+    },
+    {
+      "name": "a user details section after the list is left alone",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n\n<details>\n<summary>Packing list</summary>\n\n- [x] socks\n\n</details>",
+      "op": {
+        "type": "add",
+        "line": 0,
+        "text": "B"
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B\n\n<details>\n<summary>Packing list</summary>\n\n- [x] socks\n\n</details>"
+    },
+    {
+      "name": "an open Done section stays open",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A\n- [ ] B\n\n<details open>\n<summary>Done (1)</summary>\n\n- [x] C ✅ 2026-11-20\n\n</details>",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] B\n\n<details open>\n<summary>Done (2)</summary>\n\n- [x] A ✅ 2026-11-28\n- [x] C ✅ 2026-11-20\n\n</details>"
+    },
+    {
+      "name": "an empty item keeps the space after the box",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] A",
+      "op": {
+        "type": "add",
+        "line": 0,
+        "text": ""
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] A\n- [ ] "
+    },
+    {
+      "name": "a similar marker is not a block",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo-list -->\n- [ ] A\n- [ ] B",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo-list -->\n- [x] A\n- [ ] B"
+    },
+    {
+      "name": "a checkbox in a block quote is ticked",
+      "today": "2026-11-28",
+      "input": "> - [ ] quoted\n> - [ ] other",
+      "op": {
+        "type": "toggle",
+        "line": 0
+      },
+      "expected": "> - [x] quoted\n> - [ ] other"
+    },
+    {
+      "name": "text right after the block is kept apart from it",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] a\n- [ ] b\n# Heading",
+      "op": {
+        "type": "toggle",
+        "line": 1
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] b\n\n<details>\n<summary>Done (1)</summary>\n\n- [x] a ✅ 2026-11-28\n\n</details>\n\n# Heading"
+    },
+    {
+      "name": "an added item is one line",
+      "today": "2026-11-28",
+      "input": "<!-- marknote-todo -->\n- [ ] a",
+      "op": {
+        "type": "add",
+        "line": 0,
+        "text": "pasted\nlines "
+      },
+      "expected": "<!-- marknote-todo -->\n- [ ] a\n- [ ] pasted lines"
     }
   ]
 }

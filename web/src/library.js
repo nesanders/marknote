@@ -34,6 +34,22 @@ export function isImageName(name) {
     return dot > 0 && Object.hasOwn(IMAGE_TYPES, name.slice(dot + 1).toLowerCase());
 }
 
+/** A file name as a link target: every path segment URL-encoded. */
+export function encodeLinkPath(path) {
+    return path.split('/').map(encodeURIComponent).join('/');
+}
+
+/** A link target back to a path, decoding each segment (also %23, %3F, %2F…). */
+export function decodeLinkPath(link) {
+    return link.split('/').map((seg) => {
+        try {
+            return decodeURIComponent(seg);
+        } catch {
+            return seg;
+        }
+    }).join('/');
+}
+
 /** `name`, or "Name (2).ext", "Name (3).ext"… when `taken(name)` says it is in use. */
 export function freeName(name, taken) {
     const clean = name.replaceAll('/', '-').trim() || 'File';
@@ -66,11 +82,9 @@ export function joinPath(base, relative) {
 export function resolveAssetPath(src, notePath, notebookName, filesByPath) {
     let s = (src ?? '').trim();
     if (/^(https?:|data:image\/)/i.test(s)) return { external: s };
-    try {
-        s = decodeURI(s);
-    } catch {
-        // keep as written
-    }
+    // A link's own "?query" or "#part" is not part of the file name ("#" and
+    // "?" in names are written encoded, as %23 and %3F).
+    s = decodeLinkPath(s.replace(/[?#].*$/, ''));
     const noteDir = notePath.split('/').slice(0, -1).join('/');
     if (/^file:/i.test(s) || s.startsWith('/') || /^[a-z]:[\\/]/i.test(s)) {
         const abs = s.replace(/^file:\/\/(localhost)?/i, '').replaceAll('\\', '/');
@@ -86,7 +100,7 @@ export function resolveAssetPath(src, notePath, notebookName, filesByPath) {
         const nextToNote = joinPath(noteDir, base);
         return filesByPath.has(nextToNote) ? { path: nextToNote } : { missing: base };
     }
-    const rel = joinPath(noteDir, s.split('#')[0].split('?')[0]);
+    const rel = joinPath(noteDir, s);
     return filesByPath.has(rel) ? { path: rel } : { missing: s };
 }
 const NOTEBOOKS_KEY = '__notebooks__';
@@ -458,6 +472,7 @@ export class Library extends EventTarget {
     /** Cached listing first (instant, offline), then Drive. */
     async openNotebook(nb) {
         this.notebook = nb;
+        this.fresh = false; // set once Drive's listing has been applied
         this.items = new Map();
         this.files = new Map();
         this.texts = new Map();
@@ -483,6 +498,7 @@ export class Library extends EventTarget {
             if (this.notebook !== nb) return;
             await this.applyListing(listing, true);
             await this.store.set('listings', nb.id, listing);
+            if (this.notebook === nb) this.fresh = true;
         });
     }
 
@@ -502,7 +518,7 @@ export class Library extends EventTarget {
             }
             // Images and attachments (anything that is not a note).
             if (!f.isFolder && !f.name.endsWith(NOTE_SUFFIX)) {
-                files.set(f.path, { id: f.id, name: f.name, path: f.path, md5: f.md5Checksum ?? '', mimeType: f.mimeType, size: f.size ? Number(f.size) : null });
+                files.set(f.path, { id: f.id, name: f.name, path: f.path, parentId: f.parentId, md5: f.md5Checksum ?? '', mimeType: f.mimeType, size: f.size ? Number(f.size) : null });
                 continue;
             }
             if (!f.isFolder && !f.name.endsWith(NOTE_SUFFIX)) continue;
@@ -593,8 +609,23 @@ export class Library extends EventTarget {
 
     /** The note whose front-matter id is `noteId` (links use it), or null. */
     findByNoteId(noteId) {
-        for (const item of this.items.values()) if (!item.isFolder && item.noteId === noteId) return item;
-        return null;
+        // Conflict copies keep the note's id: prefer the note itself.
+        let copy = null;
+        for (const item of this.items.values()) {
+            if (item.isFolder || item.noteId !== noteId) continue;
+            if (!/ \(conflict \d{4}-\d{2}-\d{2} \d{4}( \d+)?\)\.md$/.test(item.name)) return item;
+            copy ??= item;
+        }
+        return copy;
+    }
+
+    /**
+     * Whether a note's text is Drive's current version: the notebook was
+     * refreshed from Drive in this session and nothing is waiting to upload.
+     */
+    isCurrent(id) {
+        const item = this.items.get(id);
+        return !!item && this.fresh && this.online && !item.pending && !id.startsWith('local-');
     }
 
     /** Whether some notes cannot be read until the notebook is unlocked. */
@@ -702,11 +733,11 @@ export class Library extends EventTarget {
         while (names.has(dir ? `${dir}/${name}` : name)) name = `${note.title}_${Date.now() + 1}.${ext}`;
         const file = await this.guard(() => this.drive.createFile(note.driveParentId, name, blob, IMAGE_TYPES[ext] ?? blob.type));
         const path = note.parentId ? `${this.pathOf(note.parentId)}/${name}` : name;
-        const entry = { id: file.id, name, path, md5: file.md5Checksum ?? '', mimeType: file.mimeType };
+        const entry = { id: file.id, name, path, parentId: note.driveParentId, md5: file.md5Checksum ?? '', mimeType: file.mimeType };
         this.files.set(path, entry);
         await this.store.set('content', `blob:${file.id}`, { md5: entry.md5, blob });
         this.emit('tree');
-        return encodeURI(name);
+        return encodeLinkPath(name);
     }
 
     /**
@@ -718,15 +749,17 @@ export class Library extends EventTarget {
         const note = this.items.get(noteId);
         if (note.id.startsWith('local-')) throw new Error('Wait until the note is uploaded before attaching files.');
         if (!this.online) throw new Error('Attaching files needs a connection.');
+        if (/\.md$/i.test(file.name ?? '')) throw new Error('Markdown files are notes: it would show up as a note, not as an attachment.');
         const dir = this.pathOf(note.parentId ?? '');
         const at = (n) => (dir ? `${dir}/${n}` : n);
-        const taken = (n) => this.files.has(at(n)) || [...this.items.values()].some((i) => i.path === at(n));
-        const name = freeName(file.name || 'File', taken);
+        const taken = (n) => this.files.has(at(n)) || [...this.items.values()].some((i) => this.pathOf(i.id) === at(n));
+        // A leading dot would hide the file (and ".directory" is folder settings).
+        const name = freeName((file.name || 'File').replace(/^\.+/, '_'), taken);
         const created = await this.guard(() => this.drive.createFile(note.driveParentId, name, file, file.type || 'application/octet-stream'));
-        const path = dir ? `${dir}/${name}` : name;
-        this.files.set(path, { id: created.id, name, path, md5: created.md5Checksum ?? '', mimeType: created.mimeType, size: file.size ?? null });
+        const path = at(name);
+        this.files.set(path, { id: created.id, name, path, parentId: note.driveParentId, md5: created.md5Checksum ?? '', mimeType: created.mimeType, size: file.size ?? null });
         this.emit('tree');
-        return { name, link: encodeURI(name) };
+        return { name, link: encodeLinkPath(name) };
     }
 
     /**
@@ -740,7 +773,9 @@ export class Library extends EventTarget {
         const f = this.files.get(r.path);
         const info = { name: f.name, size: f.size, mimeType: f.mimeType };
         if (this.drive.fake) {
-            info.downloadUrl = URL.createObjectURL(await this.drive.getBlob(f.id));
+            const key = `att:${f.id}`;
+            if (!this.blobUrls.has(key)) this.blobUrls.set(key, URL.createObjectURL(await this.drive.getBlob(f.id)));
+            info.downloadUrl = this.blobUrls.get(key);
         } else {
             info.driveUrl = `https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`;
             info.downloadUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(f.id)}`;
@@ -919,8 +954,20 @@ export class Library extends EventTarget {
         }
         item.name = name;
         item.title = item.isFolder ? name : noteName(name);
+        if (item.isFolder) this.reindexFiles();
         this.emit('tree');
         return item;
+    }
+
+    /** Images and attachments are found by path: after a folder rename or move, rebuild their paths. */
+    reindexFiles() {
+        const files = new Map();
+        for (const f of this.files.values()) {
+            const dir = !f.parentId || f.parentId === this.notebook?.id ? '' : this.pathOf(f.parentId);
+            const path = dir ? `${dir}/${f.name}` : f.name;
+            files.set(path, { ...f, path });
+        }
+        this.files = files;
     }
 
     isInside(id, folderId) {
@@ -940,6 +987,7 @@ export class Library extends EventTarget {
         await this.guard(() => this.drive.move(id, item.driveParentId, to));
         item.parentId = toParentId;
         item.driveParentId = to;
+        if (item.isFolder) this.reindexFiles();
         this.emit('tree');
         return item;
     }

@@ -6,11 +6,19 @@
 // number, so the rendered view and the editor share it; the desktop app has a
 // port of the same rules, checked against the same fixtures.
 
-export const MARKER_RE = /^<!--\s*marknote-todo\b(.*?)-->\s*$/;
-const ITEM_RE = /^( {0,3})([-*+])\s+\[([ xX])\](?:[ \t]+(.*))?$/;
-const DUE_RE = /\s*📅\s*(\d{4}-\d{2}-\d{2})/u;
-const DONE_RE = /\s*✅\s*(\d{4}-\d{2}-\d{2})/u;
+export const MARKER_RE = /^<!--\s*marknote-todo(?:\s+(.*?))?\s*-->\s*$/;
+const ITEM_RE = /^( {0,3})([-*+])[ \t]+\[([ xX])\](?:[ \t]+(.*?))?[ \t]*$/;
+// Dates are only read at the end of an item's line (not inside its text or code).
+const TAIL_RE = /[ \t]*(📅|✅)[ \t]*(\d{4}-\d{2}-\d{2})[ \t]*$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DONE_SUMMARY_RE = /^\s*<summary>\s*Done \(\d+\)\s*<\/summary>\s*$/i;
+
+/** Bodies with Windows line ends are worked on with "\n" and written back with "\r\n". */
+function withLf(body, fn) {
+    if (!body.includes('\r\n')) return fn(body);
+    const out = fn(body.replace(/\r\n/g, '\n'));
+    return typeof out === 'string' ? out.replace(/\n/g, '\r\n') : out;
+}
 
 /** Today as YYYY-MM-DD in local time. */
 export function localToday(now = new Date()) {
@@ -25,7 +33,7 @@ export function addDays(date, days) {
 
 function parseOptions(text) {
     const options = { sort: 'manual', rest: [] };
-    for (const word of text.trim().split(/\s+/).filter(Boolean)) {
+    for (const word of (text ?? '').trim().split(/\s+/).filter(Boolean)) {
         const m = /^sort=(manual|due)$/.exec(word);
         if (m) options.sort = m[1];
         else options.rest.push(word);
@@ -40,30 +48,60 @@ function parseItem(line, lineNo) {
     let due = null;
     let done = null;
     let hit;
-    while ((hit = DUE_RE.exec(text))) {
-        due = hit[1];
-        text = text.slice(0, hit.index) + text.slice(hit.index + hit[0].length);
-    }
-    while ((hit = DONE_RE.exec(text))) {
-        done = hit[1];
-        text = text.slice(0, hit.index) + text.slice(hit.index + hit[0].length);
+    while ((hit = TAIL_RE.exec(text))) {
+        if (hit[1] === '📅') due ??= hit[2];
+        else done ??= hit[2];
+        text = text.slice(0, hit.index);
     }
     return { indent: m[1], bullet: m[2], checked: m[3] !== ' ', text: text.trimEnd(), due, done, extra: [], line: lineNo };
 }
 
-/** Reads the item list starting at line i; returns [items, next line]. */
+const indentOf = (line) => /^[ \t]*/.exec(line)[0].replace(/\t/g, '    ').length;
+
+/** Lines that end a paragraph instead of continuing it lazily (CommonMark). */
+const interrupts = (line) => /^ {0,3}(#{1,6}(\s|$)|>|`{3}|~{3}|<|[-*+][ \t]|\d+[.)][ \t]|([-*_])([ \t]*\3){2,}[ \t]*$)/.test(line);
+
+/**
+ * Reads the item list starting at line i; returns [items, next line]. Lines
+ * indented deeper than the first item (notes, sub-items), blank lines inside
+ * the list and lazy continuation lines belong to the item above.
+ */
 function readItems(lines, i) {
     const items = [];
+    let base = -1;
+    const topItem = (line, n) => {
+        const item = parseItem(line, n);
+        return item && (base < 0 || item.indent.length <= base) ? item : null;
+    };
     while (i < lines.length) {
-        const item = parseItem(lines[i], i);
+        const line = lines[i];
+        const item = topItem(line, i);
         if (item) {
+            if (base < 0) base = item.indent.length;
             items.push(item);
             i += 1;
             continue;
         }
-        // Indented, non-blank lines belong to the item above (notes, sub-items).
-        if (items.length && /^\s+\S/.test(lines[i]) && !/^\s*<\/?details>/i.test(lines[i])) {
-            items[items.length - 1].extra.push(lines[i]);
+        if (!items.length) break;
+        const last = items[items.length - 1];
+        if (!line.trim()) {
+            // Blank lines stay in the list only if it goes on after them.
+            let j = i;
+            while (j < lines.length && !lines[j].trim()) j += 1;
+            if (j < lines.length && (topItem(lines[j], j) || indentOf(lines[j]) > base)) {
+                for (; i < j; ++i) last.extra.push(lines[i]);
+                continue;
+            }
+            break;
+        }
+        if (indentOf(line) > base) {
+            last.extra.push(line);
+            i += 1;
+            continue;
+        }
+        const prev = last.extra.length ? last.extra[last.extra.length - 1] : 'item';
+        if (prev.trim() && !interrupts(line)) {
+            last.extra.push(line); // a lazily wrapped line of the item's paragraph
             i += 1;
             continue;
         }
@@ -81,7 +119,7 @@ function skipBlank(lines, i) {
 function parseBlockAt(lines, start) {
     const m = MARKER_RE.exec(lines[start]);
     if (!m) return null;
-    const block = { start, end: start + 1, options: parseOptions(m[1]), open: [], done: [], doneStart: -1 };
+    const block = { start, end: start + 1, options: parseOptions(m[1]), open: [], done: [], doneStart: -1, detailsOpen: false };
     let i = skipBlank(lines, start + 1);
     if (i < lines.length && ITEM_RE.test(lines[i])) {
         [block.open, i] = readItems(lines, i);
@@ -89,10 +127,12 @@ function parseBlockAt(lines, start) {
     }
     // The Done section: <details>, <summary>, done items, </details>.
     let j = skipBlank(lines, i);
-    if (j < lines.length && /^\s*<details(\s+open)?\s*>\s*$/i.test(lines[j])) {
+    const details = j < lines.length && /^\s*<details(\s+open)?\s*>\s*$/i.exec(lines[j]);
+    if (details) {
         const detailsLine = j;
         j = skipBlank(lines, j + 1);
-        if (j < lines.length && /^\s*<summary>.*<\/summary>\s*$/i.test(lines[j])) {
+        // Only our own section ("Done (n)"), not a user's <details> that follows.
+        if (j < lines.length && DONE_SUMMARY_RE.test(lines[j])) {
             j = skipBlank(lines, j + 1);
             let done = [];
             if (j < lines.length && ITEM_RE.test(lines[j])) [done, j] = readItems(lines, j);
@@ -100,6 +140,7 @@ function parseBlockAt(lines, start) {
             if (j < lines.length && /^\s*<\/details>\s*$/i.test(lines[j])) {
                 block.done = done;
                 block.doneStart = detailsLine;
+                block.detailsOpen = !!details[1];
                 block.end = j + 1;
             }
         }
@@ -109,17 +150,19 @@ function parseBlockAt(lines, start) {
 
 /** All to-do blocks in a body: [{start, end, options, open, done, doneStart}], lines [start, end). */
 export function findBlocks(body) {
-    const lines = body.split('\n');
+    const lines = body.replace(/\r\n/g, '\n').split('\n');
     const blocks = [];
-    let fence = null;
+    let fence = null; // {ch, len} of the open code fence (CommonMark rules)
     for (let i = 0; i < lines.length; ++i) {
-        const f = /^\s{0,3}(`{3,}|~{3,})/.exec(lines[i]);
-        if (f) {
-            if (!fence) fence = f[1][0];
-            else if (f[1][0] === fence) fence = null;
+        const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(lines[i]);
+        if (fence) {
+            if (f && f[1][0] === fence.ch && f[1].length >= fence.len && !f[2].trim()) fence = null;
             continue;
         }
-        if (fence) continue;
+        if (f && !(f[1][0] === '`' && f[2].includes('`'))) {
+            fence = { ch: f[1][0], len: f[1].length };
+            continue;
+        }
         const block = parseBlockAt(lines, i);
         if (block) {
             blocks.push(block);
@@ -147,7 +190,15 @@ export function itemLine(item) {
     if (item.text) parts.push(item.text);
     if (item.due) parts.push(`📅 ${item.due}`);
     if (item.done) parts.push(`✅ ${item.done}`);
-    return parts.join(' ');
+    // An empty item keeps the space after "[ ]", so text typed there stays an item.
+    return parts.length === 1 ? `${parts[0]} ` : parts.join(' ');
+}
+
+/** An item's own lines without blank lines at the end (they would pile up when items move). */
+function extraLines(item) {
+    let n = item.extra.length;
+    while (n > 0 && !item.extra[n - 1].trim()) n -= 1;
+    return item.extra.slice(0, n);
 }
 
 function sortByDue(items) {
@@ -171,10 +222,13 @@ function normalise(block, today) {
 export function serialize(block) {
     const opts = [block.options.sort === 'due' ? 'sort=due' : null, ...block.options.rest].filter(Boolean);
     const out = [opts.length ? `<!-- marknote-todo ${opts.join(' ')} -->` : '<!-- marknote-todo -->'];
-    for (const it of block.open) out.push(itemLine(it), ...it.extra);
+    const items = (list) => list.forEach((it, n) => {
+        out.push(itemLine(it), ...(n === list.length - 1 ? extraLines(it) : it.extra));
+    });
+    items(block.open);
     if (block.done.length) {
-        out.push('', '<details>', `<summary>Done (${block.done.length})</summary>`, '');
-        for (const it of block.done) out.push(itemLine(it), ...it.extra);
+        out.push('', block.detailsOpen ? '<details open>' : '<details>', `<summary>Done (${block.done.length})</summary>`, '');
+        items(block.done);
         out.push('', '</details>');
     }
     return out;
@@ -183,7 +237,10 @@ export function serialize(block) {
 function replaceBlock(body, block, today) {
     normalise(block, today);
     const lines = body.split('\n');
-    lines.splice(block.start, block.end - block.start, ...serialize(block));
+    const out = serialize(block);
+    // The block ends in HTML (</details>) or a list: a line right after it would join it.
+    if (block.end < lines.length && lines[block.end].trim()) out.push('');
+    lines.splice(block.start, block.end - block.start, ...out);
     return lines.join('\n');
 }
 
@@ -195,9 +252,16 @@ function replaceBlock(body, block, today) {
  * {type: 'move', line, to} (an open item to index `to`; the order becomes manual).
  */
 export function apply(body, op, today = localToday()) {
+    return withLf(body, (b) => applyLf(b, op, today));
+}
+
+function applyLf(body, op, today) {
     const where = locate(body, op.line);
     if (!where) return null;
     const { block, list, index } = where;
+    // Item operations act on the item's own line, not on its notes or sub-items
+    // (a sub-item's checkbox is then ticked in place by toggleLine).
+    if (list !== undefined && block[list][index].line !== op.line && op.type !== 'sort' && op.type !== 'add') return null;
     switch (op.type) {
     case 'toggle': {
         if (list === undefined) return null;
@@ -233,7 +297,7 @@ export function apply(body, op, today = localToday()) {
         return replaceBlock(body, block, today);
     }
     case 'add':
-        block.open.push({ indent: '', bullet: '-', checked: false, text: op.text ?? '', due: null, done: null, extra: [], line: -1 });
+        block.open.push({ indent: '', bullet: '-', checked: false, text: (op.text ?? '').replace(/\s*\n\s*/g, ' ').trim(), due: null, done: null, extra: [], line: -1 });
         return replaceBlock(body, block, today);
     default:
         return null;
@@ -246,7 +310,8 @@ export function toggleLine(body, line, checked, today = localToday()) {
     if (moved !== null) return moved;
     const lines = body.split('\n');
     if (line < 0 || line >= lines.length) return body;
-    lines[line] = lines[line].replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/, `$1[${checked ? 'x' : ' '}]`);
+    // Also inside block quotes ("> - [ ] …").
+    lines[line] = lines[line].replace(/^((?:\s*>)*\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/, `$1[${checked ? 'x' : ' '}]`);
     return lines.join('\n');
 }
 
@@ -256,6 +321,10 @@ export function toggleLine(body, line, checked, today = localToday()) {
  * already in a block.
  */
 export function makeBlock(body, line, today = localToday()) {
+    return withLf(body, (b) => makeBlockLf(b, line, today));
+}
+
+function makeBlockLf(body, line, today) {
     if (locate(body, line)) return null;
     const lines = body.split('\n');
     if (line < 0 || line >= lines.length) return null;

@@ -64,8 +64,12 @@ export function slashSource(onImage, onFile) {
                         (label === 'File…' ? onFile : onImage)?.();
                         return;
                     }
-                    const at = insert.indexOf('|');
-                    const text = insert.replace('|', '');
+                    // A divider or table right under a paragraph line needs a blank line first.
+                    const line = view.state.doc.lineAt(applyFrom);
+                    const above = line.number > 1 && view.state.doc.line(line.number - 1).text.trim();
+                    const pre = NEEDS_BLANK_BEFORE.has(label) && above && applyFrom === line.from ? '\n' : '';
+                    const at = pre.length + insert.indexOf('|');
+                    const text = pre + insert.replace('|', '');
                     view.dispatch({ changes: { from: applyFrom, to: applyTo, insert: text }, selection: { anchor: applyFrom + at } });
                 },
             })),
@@ -77,7 +81,20 @@ export function slashSource(onImage, onFile) {
 
 /** Line-prefix blocks: picking one turns the selected lines into it. */
 const PREFIX = { Text: '', 'Heading 1': '# ', 'Heading 2': '## ', 'Heading 3': '### ', Quote: '> ', 'Bulleted list': '- ', 'Numbered list': '1. ', Checklist: '- [ ] ', 'To-do list': '- [ ] ' };
-const ANY_PREFIX = /^(#{1,6} |[-*+] \[[ xX]\] |[-*+] |\d+[.)] |> )?/;
+// Indent (kept for list types), then any existing block prefix.
+const ANY_PREFIX = /^([ \t]*)(#{1,6} |[-*+] \[[ xX]\] |\d+[.)] \[[ xX]\] |[-*+] |\d+[.)] |> )?/;
+const LIST_TYPES = new Set(['Bulleted list', 'Numbered list', 'Checklist', 'To-do list']);
+
+/** Blocks that must not follow a paragraph line directly (they would join or change it). */
+const NEEDS_BLANK_BEFORE = new Set(['Table', 'Divider', 'File…']);
+
+/** The last line (1-based) of the block around `n`: its to-do block, else its run of non-blank lines. */
+function blockEnd(state, n) {
+    const where = Todo.locate(state.doc.toString(), n - 1);
+    if (where) return where.block.end;
+    while (n < state.doc.lines && state.doc.line(n + 1).text.trim()) n += 1;
+    return n;
+}
 
 /** Blocks for the toolbar menu: [{label, section, hint}], in slash-menu order. */
 export const blockTypes = BLOCKS.map(([label, section, hint]) => ({ label, section, hint: label === 'To-do list' ? '' : hint }));
@@ -112,14 +129,20 @@ export function applyBlockType(view, label, onImage, onFile) {
         const body = state.doc.toString();
         if (label === 'To-do list' && Todo.locate(body, first.number - 1)) return view.focus();
         const prefix = PREFIX[label];
-        const changes = [];
+        const specs = [];
         for (let n = first.number; n <= last.number; ++n) {
             const line = state.doc.line(n);
             if (!line.text.trim() && first.number !== last.number) continue;
-            const old = line.text.match(ANY_PREFIX)[0];
-            changes.push({ from: line.from, to: line.from + old.length, insert: prefix });
+            const [whole, indent] = line.text.match(ANY_PREFIX);
+            const keep = LIST_TYPES.has(label) ? indent : '';
+            specs.push({ from: line.from, to: line.from + whole.length, insert: keep + prefix });
         }
-        view.dispatch({ changes, selection: { anchor: changes.length === 1 ? first.from + prefix.length + (first.text.length - first.text.match(ANY_PREFIX)[0].length) : sel.anchor } });
+        const changes = state.changes(specs);
+        // The selection follows the edit (and a single line puts the cursor at its end).
+        const selection = specs.length === 1 && sel.empty
+            ? { anchor: changes.mapPos(first.to, 1) }
+            : state.selection.map(changes);
+        view.dispatch({ changes, selection });
         if (label === 'To-do list') {
             const made = Todo.makeBlock(view.state.doc.toString(), view.state.doc.lineAt(view.state.selection.main.head).number - 1);
             if (made !== null) dispatchBody(view, made);
@@ -131,28 +154,42 @@ export function applyBlockType(view, label, onImage, onFile) {
     if (insert === undefined) return undefined;
     const at = insert.indexOf('|');
     const text = insert.replace('|', '');
-    if (!last.text.trim()) {
-        view.dispatch({ changes: { from: last.from, to: last.to, insert: text }, selection: { anchor: last.from + at } });
-    } else {
-        const pre = '\n\n';
-        view.dispatch({ changes: { from: last.to, insert: pre + text }, selection: { anchor: last.to + pre.length + at } });
-    }
+    const pos = insertAt(state, last.number, text, NEEDS_BLANK_BEFORE.has(label));
+    view.dispatch({ changes: pos.changes, selection: { anchor: pos.start + at } });
     return view.focus();
 }
 
 /**
- * Inserts `text` as its own paragraph below the cursor's line (or in place of
- * an empty line). The cursor stays off the new line, so a block shown as a
- * card (an attachment) is shown at once.
+ * Where a new block goes for the cursor on line `n`: in place of an empty line
+ * (after a blank line if a paragraph is right above and `blankBefore`), else
+ * after the end of the current block, so paragraphs, lists and to-do blocks
+ * are not split. Returns {changes, start, end} (start/end of the new text).
  */
-export function insertBlockBelow(view, text) {
-    const { state } = view;
-    const line = state.doc.lineAt(state.selection.main.head);
+function insertAt(state, n, text, blankBefore) {
+    const line = state.doc.line(n);
     if (!line.text.trim()) {
-        const insert = `${text}\n\n`;
-        view.dispatch({ changes: { from: line.from, to: line.to, insert }, selection: { anchor: line.from + insert.length } });
-    } else {
-        view.dispatch({ changes: { from: line.to, insert: `\n\n${text}` }, selection: { anchor: line.to } });
+        const above = n > 1 && state.doc.line(n - 1).text.trim();
+        const pre = blankBefore && above ? '\n' : '';
+        return { changes: { from: line.from, to: line.to, insert: pre + text }, start: line.from + pre.length, end: line.from + pre.length + text.length };
     }
+    const end = state.doc.line(blockEnd(state, n));
+    return { changes: { from: end.to, insert: `\n\n${text}` }, start: end.to + 2, end: end.to + 2 + text.length };
+}
+
+/**
+ * Inserts `text` as its own paragraph below the block with the cursor (or in
+ * place of an empty line). The cursor stays off the new line, so a block shown
+ * as a card (an attachment) is shown at once. Returns the end of the new text.
+ */
+export function insertBlockBelow(view, text, after = null) {
+    const { state } = view;
+    const n = after === null ? state.doc.lineAt(state.selection.main.head).number : state.doc.lineAt(after).number;
+    const pos = insertAt(state, n, text, true);
+    const replacedEmpty = !state.doc.line(n).text.trim();
+    const changes = state.changes(pos.changes);
+    // Keep the cursor where it was (on an empty line that became the block: after it).
+    const anchor = replacedEmpty ? Math.min(pos.end, changes.newLength) : changes.mapPos(state.selection.main.head);
+    view.dispatch({ changes, selection: { anchor } });
     view.focus();
+    return pos.end;
 }

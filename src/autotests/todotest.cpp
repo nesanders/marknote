@@ -182,8 +182,11 @@ private Q_SLOTS:
 
         TodoBlock::Op remove;
         remove.type = TodoBlock::Op::Remove;
-        remove.line = 2; // a note line removes its item
+        remove.line = 1; // the item goes with its notes
         QCOMPARE(*TodoBlock::apply(body, remove), u"<!-- marknote-todo -->\n- [ ] B"_s);
+        // Item operations act on the item's own line only (a note line is not the item).
+        remove.line = 2;
+        QVERIFY(!TodoBlock::apply(body, remove));
     }
 
     void uncheckingLastDoneDropsTheSection()
@@ -203,7 +206,7 @@ private Q_SLOTS:
         QCOMPARE(open.first().toMap()[u"line"_s].toInt(), 1);
         const auto done = data[u"done"_s].toList();
         QCOMPARE(done.first().toMap()[u"line"_s].toInt(), 6);
-        QCOMPARE(helper.addItem(helper.newBlock(), u"New"_s), u"<!-- marknote-todo -->\n- [ ]\n- [ ] New"_s);
+        QCOMPARE(helper.addItem(helper.newBlock(), u"New"_s), u"<!-- marknote-todo -->\n- [ ] \n- [ ] New"_s);
     }
 
     /// A note with to-do blocks is read into one Todo block each and written

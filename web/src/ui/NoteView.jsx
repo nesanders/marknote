@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import * as FM from '../frontmatter.js';
 import { renderMarkdown } from '../markdown.js';
 import * as Todo from '../todo.js';
-import { openDuePicker } from './duepicker.js';
+import { openDuePicker, closeDuePicker } from './duepicker.js';
 import { blockTypes, currentBlockType, applyBlockType, insertBlockBelow } from './slash.js';
 import { attachmentMarkdown } from '../attachments.js';
 import { enhance } from '../extras.js';
@@ -56,15 +56,25 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
 
     const resolveAttachment = (src) => library.resolveAttachment(item.id, src);
 
-    // Files attached below the cursor (docs/attachments.md).
+    // Files attached below the cursor (docs/attachments.md), in the order picked.
     const addFiles = async (files) => {
         if (!files.length) return;
         if (library.vault && !confirm('Attachments are not encrypted: the file is stored on Google Drive as it is. Attach anyway?')) return;
+        let after = null; // each one goes after the previous one
         for (const file of files) {
             setUploading((n) => n + 1);
             try {
                 const { name, link } = await library.addAttachment(item.id, file);
-                if (viewRef.current) insertBlockBelow(viewRef.current, attachmentMarkdown(name, link));
+                const md = attachmentMarkdown(name, link);
+                if (viewRef.current) {
+                    after = insertBlockBelow(viewRef.current, md, after);
+                } else {
+                    // The editor was closed during the upload: add it at the end of the note.
+                    const latest = FM.split(library.text(item.id) ?? '');
+                    const body = latest.body.replace(/\s*$/, '');
+                    await library.saveNote(item.id, FM.join(latest.raw, `${body}${body ? '\n\n' : ''}${md}\n`));
+                    setText(library.text(item.id));
+                }
             } catch (e) {
                 toast(`Could not attach “${file.name}”: ${e.message}`, 'error');
             } finally {
@@ -182,13 +192,20 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
         }
     };
 
-    // Which Done sections are open, by block number, so they stay open across re-renders.
+    // The note's current body, for callbacks that run later (the due picker).
+    const bodyRef = useRef(split.body);
+    bodyRef.current = split.body;
+    useEffect(() => closeDuePicker, [html, editing, item.id]); // its line may be stale after a change
+
+    // Which to-do blocks have their Done section open (by block number, as a
+    // block may gain or lose its Done section), so they stay open across re-renders.
     const openDone = useRef(new Set());
     const refocus = useRef(null);
+    const blockIndex = (el) => [...articleRef.current.querySelectorAll('.todo-block')].indexOf(el.closest('.todo-block'));
     useLayoutEffect(() => {
         if (editing || !articleRef.current) return;
-        articleRef.current.querySelectorAll('details.todo-done').forEach((d, i) => {
-            d.open = openDone.current.has(i);
+        articleRef.current.querySelectorAll('details.todo-done').forEach((d) => {
+            d.open = openDone.current.has(blockIndex(d));
         });
         if (refocus.current !== null) {
             articleRef.current.querySelectorAll('input.todo-new')[refocus.current]?.focus();
@@ -200,7 +217,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
     }, [item.id]);
     const onToggleDetails = (e) => {
         if (!e.target.matches?.('details.todo-done')) return;
-        const i = [...articleRef.current.querySelectorAll('details.todo-done')].indexOf(e.target);
+        const i = blockIndex(e.target);
         if (e.target.open) openDone.current.add(i);
         else openDone.current.delete(i);
     };
@@ -215,7 +232,7 @@ export function NoteView({ library, item, editing, setEditing, onBack, onMenu, o
         if (due) {
             const line = Number(due.dataset.dueLine);
             openDuePicker(due, due.dataset.due ?? null, (date) => {
-                const body = Todo.apply(split.body, { type: 'due', line, date });
+                const body = Todo.apply(bodyRef.current, { type: 'due', line, date });
                 if (body !== null) saveBody(body);
             });
             return;

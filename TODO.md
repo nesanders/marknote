@@ -17,6 +17,18 @@ the app to tick items off.)
   images keep going in as images). Also allow inserting an *empty* attachment
   block ("Drop a file here, or click to choose") that a dropped file fills in.
   Same encrypted-notebook question as File…; see docs/attachments.md.
+- [ ] Moving a note to another folder leaves its attachments (and images)
+  behind, so its relative links break. Offer to move the linked files with it
+  (web and desktop).
+- [ ] Web: attachment cards are shown at any depth (in a quote or list item);
+  the desktop only shows top-level ones. Pick one rule for both.
+- [ ] Desktop: "/" › File… in an empty paragraph takes two undo steps (insert
+  the card, remove the empty paragraph); make it one.
+- [ ] Desktop to-do block: "Done (%1)" should be a plural-aware i18n string;
+  a done item without a completion date shows a lone "✓".
+- [ ] Web: a note link opened while offline at first start is not retried
+  when the connection comes back.
+- [ ] Web: saving a note without front matter drops blank lines at its start.
 
 ## Done
 

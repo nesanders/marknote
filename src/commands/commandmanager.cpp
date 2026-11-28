@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 #include "commandmanager.h"
+
+#include <QSignalBlocker>
 #include "changelisttypecommand.h"
 #include "deindentlistitem.h"
 #include "editcelltext.h"
@@ -83,6 +85,21 @@ void CommandManager::setModel(MDTreeModel *model)
             if (!m_undoStacks.contains(m_model)) {
                 QUndoStack *newStack = new QUndoStack(m_model);
                 m_undoStacks.insert(m_model, newStack);
+                // A new document (opening a note, reloading after sync) frees the
+                // old blocks, which the old undo steps point to: drop those steps.
+                connect(m_model, &QAbstractItemModel::modelAboutToBeReset, this, [this, newStack]() {
+                    if (newStack->count() == 0) {
+                        return;
+                    }
+                    {
+                        const QSignalBlocker blocker(newStack); // no autosave for this
+                        newStack->clear();
+                    }
+                    if (currentUndoStack() == newStack) {
+                        Q_EMIT canUndoChanged();
+                        Q_EMIT canRedoChanged();
+                    }
+                });
                 connect(m_model, &QObject::destroyed, this, [this, model]() {
                     m_undoStacks.remove(model);
                     if (m_model == model) {
@@ -153,6 +170,22 @@ void CommandManager::splitCode(TreeItem *block,
 void CommandManager::insertParagraphBelow(TreeItem *block, const QString &text)
 {
     pushCommand(new InsertParagraphBelowCommand(block, text, m_model));
+}
+
+TreeItem *CommandManager::insertionTarget() const
+{
+    if (!m_model) {
+        return nullptr;
+    }
+    if (TreeItem *focused = m_model->focusedBlock(); focused && focused->parent()) {
+        return focused;
+    }
+    const QList<TreeItem *> selected = m_model->selectedBlocks();
+    if (!selected.isEmpty() && selected.last()->parent()) {
+        return selected.last();
+    }
+    TreeItem *root = m_model->rootItem();
+    return root && root->childCount() > 0 ? root->child(root->childCount() - 1) : nullptr;
 }
 
 void CommandManager::focusEndOfDocument()
@@ -292,7 +325,8 @@ TreeItem *CommandManager::checklistForTodo(TreeItem *block) const
     }
     for (TreeItem *child : list->children()) {
         const auto listItem = child->itemAs<MD::ListItem>();
-        if (!listItem || !listItem->isTaskList()) {
+        // To-do blocks are bulleted checklists ("- [ ]"); numbered ones are not offered.
+        if (!listItem || !listItem->isTaskList() || listItem->listType() == MD::ListItem::Ordered) {
             return nullptr;
         }
     }
@@ -328,11 +362,18 @@ void CommandManager::insertBlockBelow(TreeItem *block, const QString &markdown)
     }
     insertParagraphBelow(block, QString());
     TreeItem *paragraph = m_model->focusedBlock();
+    const int row = paragraph ? paragraph->row() : -1;
+    TreeItem *parent = paragraph ? paragraph->parent() : nullptr;
     if (paragraph && paragraph != block) {
         pushCommand(new ParseBlockCommand(paragraph, markdown, m_model));
     }
     if (auto stack = currentUndoStack()) {
         stack->endMacro();
+    }
+    // The paragraph was replaced by what it parsed into: focus that, not the
+    // detached paragraph (a later Insert action would otherwise do nothing).
+    if (parent && row >= 0 && row < parent->childCount()) {
+        m_model->requestFocus(parent->child(row), -1);
     }
 }
 

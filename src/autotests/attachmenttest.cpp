@@ -119,6 +119,28 @@ private Q_SLOTS:
         QCOMPARE(Attachments::parse(Attachments::markdown(u"Q#1?.txt"_s, Attachments::encodePath(u"Q#1?.txt"_s)))->path, u"Q#1?.txt"_s);
     }
 
+    /// Links that point outside the note's folder are not attachments.
+    void staysInsideTheNoteFolder()
+    {
+        QVERIFY(!Attachments::parse(u"[📎 x](%2Fetc%2Fpasswd)"_s));
+        QVERIFY(!Attachments::parse(u"[📎 x](../../.ssh/id_rsa)"_s));
+        QVERIFY(!Attachments::parse(u"[📎 x](%2e%2e/secret.txt)"_s));
+        QVERIFY(!Attachments::parse(u"[📎 x](C:%5Cwin.ini)"_s));
+        QVERIFY(Attachments::parse(u"[📎 x](sub/ok.pdf)"_s));
+    }
+
+    /// Names with ":", "#", "?" or "\\" make working links.
+    void awkwardNames()
+    {
+        for (const QString &name : {u"a:b.pdf"_s, u"Invoice #12.pdf"_s, u"what?.pdf"_s, u"100%.pdf"_s}) {
+            const QString md = Attachments::markdown(name, Attachments::encodePath(name));
+            const auto att = Attachments::parse(md);
+            QVERIFY2(att, qPrintable(md));
+            QCOMPARE(att->path, name);
+        }
+        QCOMPARE(Attachments::markdown(u"back\\slash[1]"_s, u"a.pdf"_s), u"[📎 backslash1](a.pdf)"_s);
+    }
+
     void uniqueNames()
     {
         QTemporaryDir dir;

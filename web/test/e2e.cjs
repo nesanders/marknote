@@ -552,9 +552,23 @@ async function demoLinks(browser, errors) {
     // Without the notebook part, the note is found by searching the notebooks.
     await page2.goto(tripUrl.replace(/&?nb=[^&]*/, ''));
     await page2.waitForSelector('.note-title:has-text("Trip to Lisbon")');
-    // An unknown note says so.
+    // An unknown note: it could be in the locked notebook, so that is offered
+    // first; cancelling says it was not found.
     await page2.goto(BASE + '?demo&note=01ZZZZZZZZZZZZZZZZZZZZZZZZ');
-    await page2.waitForSelector('.toast:has-text("linked note was not found")');
+    await page2.waitForSelector('.dialog input[type=password]');
+    await page2.keyboard.press('Escape');
+    await page2.waitForSelector('.toast:has-text("not found in your unlocked notebooks")');
+    // A note in the locked notebook is found from a fresh start (not only when
+    // that notebook happens to be opened first).
+    const fresh = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p4 = await fresh.newPage();
+    watch(p4, errors);
+    await p4.goto(BASE + '?demo&note=01DEMOPRIVATE0000000000002');
+    await p4.waitForSelector('.dialog input[type=password]');
+    await p4.fill('.dialog input[type=password]', 'demo password');
+    await p4.keyboard.press('Enter');
+    await p4.waitForSelector('.note-title:has-text("Gift ideas")');
+    await fresh.close();
     // A note in an encrypted notebook: unlock, then it opens.
     await page2.goto(BASE + '?demo&note=01DEMOPRIVATE0000000000002');
     await page2.waitForSelector('.dialog input[type=password]');

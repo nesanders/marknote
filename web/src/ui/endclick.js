@@ -26,6 +26,9 @@ const plugin = ViewPlugin.fromClass(class {
         this.view = view;
         this.down = (e) => {
             if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return;
+            // Not on the scrollbar (it is part of the scroller element too).
+            const box = view.scrollDOM.getBoundingClientRect();
+            if (e.clientX >= box.left + view.scrollDOM.clientLeft + view.scrollDOM.clientWidth) return;
             const { doc } = view.state;
             // Where the text really ends on screen (widget heights may not be measured yet).
             const end = view.coordsAtPos(doc.length, -1);

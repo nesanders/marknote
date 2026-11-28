@@ -369,8 +369,10 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
     const showNote = (id) => {
         setNoteId(id);
         if (!wide) {
-            history.replaceState({ screen: 'notebooks' }, '');
-            history.pushState({ screen: 'tree' }, '');
+            if (screen !== 'tree') {
+                history.replaceState({ screen: 'notebooks' }, '');
+                history.pushState({ screen: 'tree' }, '');
+            }
             history.pushState({ screen: 'note' }, '');
             setScreen('note');
         }
@@ -385,22 +387,36 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
         }
     };
 
+    /** Waits for `nb` to be unlocked, then opens the linked note (see the effect below). */
+    const waitForUnlock = (l, nb) => {
+        setLink({ ...l, waiting: true });
+        setDialog(<UnlockDialog library={library} name={nb.name} onClose={() => {
+            setDialog(null);
+            if (library.hasLockedNotes()) {
+                doneWithLink(); // cancelled
+                toast('The linked note was not found in your unlocked notebooks.', 'warning');
+            }
+        }} />);
+        return 'waiting';
+    };
+
     /**
      * Opens a linked note: in the open notebook, else in the others. A note in
-     * a locked notebook waits for the unlock (see the effect below).
+     * a locked notebook (its id is encrypted too) waits for the unlock.
      */
     const openLink = async (l, opened) => {
         let item = library.findByNoteId(l.note);
-        if (!item && library.hasLockedNotes()) {
-            setLink({ ...l, waiting: true });
-            setDialog(<UnlockDialog library={library} name={opened.name} onClose={() => setDialog(null)} />);
-            return 'waiting';
-        }
+        let locked = !item && library.hasLockedNotes() ? opened : null;
         for (const nb of library.notebooks) {
             if (item) break;
             if (nb === opened) continue;
             await openNotebook(nb, { keepNote: true });
             item = library.findByNoteId(l.note);
+            if (!item && !locked && library.hasLockedNotes()) locked = nb;
+        }
+        if (!item && locked) {
+            if (library.notebook !== locked) await openNotebook(locked, { keepNote: true });
+            return waitForUnlock(l, locked);
         }
         doneWithLink();
         if (!item) {
@@ -418,12 +434,18 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
         if (item) {
             doneWithLink();
             showNote(item.id);
+        } else if (!library.hasLockedNotes()) {
+            doneWithLink(); // unlocked, but the note is not in this notebook
+            toast('The linked note was not found in this notebook.', 'warning');
         }
     }, [rev, link]);
 
     // Every note gets a stable id (as the desktop app does when it saves), so it can be linked.
     useEffect(() => {
         if (!note || note.isFolder || note.noteId || library.isLockedNote(note.id) || library.text(note.id) === undefined) return;
+        // Only on text known to be Drive's current version: writing to a stale
+        // cached copy (offline, or before the refresh is done) makes a conflict copy.
+        if (!library.isCurrent(note.id)) return;
         library.editFrontMatter(note.id, (raw) => raw).catch(() => {});
     }, [noteId, rev]);
 
@@ -438,14 +460,24 @@ function Workspace({ library, settings, setSettings, account, onSignOut }) {
             p.delete('note');
             p.delete('nb');
         }
-        const url = location.pathname + (p.size ? `?${p}` : '');
+        const query = p.toString();
+        const url = location.pathname + (query ? `?${query}` : '');
         if (url !== location.pathname + location.search) history.replaceState(history.state, '', url);
     }, [noteId, note?.noteId, notebook?.id, link]);
 
     const copyLink = async (item) => {
         try {
-            if (!item.noteId) await library.editFrontMatter(item.id, (raw) => raw);
-            await navigator.clipboard.writeText(noteUrl(item.noteId, notebook?.id));
+            if (item.noteId) {
+                // Right away: Safari only allows copying during the click itself.
+                await navigator.clipboard.writeText(noteUrl(item.noteId, notebook?.id));
+            } else {
+                const url = library.editFrontMatter(item.id, (raw) => raw).then(() => noteUrl(library.items.get(item.id)?.noteId, notebook?.id));
+                if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+                    await navigator.clipboard.write([new ClipboardItem({ 'text/plain': url.then((u) => new Blob([u], { type: 'text/plain' })) })]);
+                } else {
+                    await navigator.clipboard.writeText(await url);
+                }
+            }
             toast('Link copied');
         } catch (e) {
             toast(`Could not copy the link: ${e.message}`, 'error');

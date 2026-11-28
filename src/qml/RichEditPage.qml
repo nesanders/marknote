@@ -694,7 +694,8 @@ EditPage {
     /// Insert a block of @p type (a slash menu type) below the focused block.
     /// Used by the Insert menu in the menu bar.
     function insertBlockFromMenu(type: string): void {
-        const currentBlock = CommandManager.model ? CommandManager.model.focusedBlock() : null;
+        // Also with no text block focused (a card selected, typing in a to-do item).
+        const currentBlock = CommandManager.insertionTarget();
         if (!currentBlock) {
             return;
         }

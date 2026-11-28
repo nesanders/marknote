@@ -14,7 +14,9 @@ A paragraph that consists of exactly one link whose text starts with `📎`
 (optionally followed by a space) and whose target is a relative path (not a URL
 with a scheme, not a `.md` note) is shown as an attachment **card**. The link
 text after `📎 ` is the name shown; the target is the file, relative to the
-note's folder, URL-encoded (`My%20file.pdf`). Links anywhere else stay links.
+note's folder, URL-encoded (`My%20file.pdf`; also `#`, `?`, `:` and `%`). The
+file must be in the note's folder or below it: absolute paths (also encoded
+ones) and `..` steps are not attachments. Links anywhere else stay links.
 
 ## Adding one
 

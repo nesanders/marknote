@@ -25,16 +25,45 @@ BlockTemplate {
 
     readonly property int fontSize: Math.max(4, Math.round(Config.editorFont.pointSize * Config.editorZoom / 100))
 
+    // Text typed into an item, not saved yet: {line, text}. Every operation
+    // starts from base(), which includes it, so a click elsewhere never loses it.
+    property var pendingEdit: null
+
+    function base(): string {
+        const p = root.pendingEdit;
+        return p ? TodoHelper.setText(root.todoMd, p.line, p.text) : root.todoMd;
+    }
+
     function commit(markdown: string): void {
+        pendingTimer.stop();
+        root.pendingEdit = null;
         if (markdown !== root.todoMd) {
             CommandManager.editTodo(root.block, markdown);
         }
     }
 
+    // Typed text is saved shortly after typing stops (so saving the note or
+    // quitting right after typing keeps it).
+    Timer {
+        id: pendingTimer
+        interval: 600
+        onTriggered: if (root.pendingEdit) root.commit(root.base())
+    }
+
+    /// Puts the cursor at the end of open item @p index (after rows were rebuilt).
+    function focusItem(index: int): void {
+        Qt.callLater(() => {
+            const row = openRepeater.itemAt(Math.min(index, openRepeater.count - 1));
+            if (row) {
+                row.focusText();
+            }
+        });
+    }
+
     TodoDueDialog {
         id: dueDialog
         property int line: -1
-        onPicked: (date) => root.commit(TodoHelper.setDue(root.todoMd, line, date))
+        onPicked: (date) => root.commit(TodoHelper.setDue(root.base(), line, date))
     }
 
     QQC2.Menu {
@@ -45,14 +74,14 @@ BlockTemplate {
             checkable: true
             autoExclusive: true
             checked: root.todo.sort !== "due"
-            onTriggered: root.commit(TodoHelper.setSort(root.todoMd, "manual"))
+            onTriggered: root.commit(TodoHelper.setSort(root.base(), "manual"))
         }
         QQC2.MenuItem {
             text: i18nc("@action:inmenu to-do order", "By Due Date")
             checkable: true
             autoExclusive: true
             checked: root.todo.sort === "due"
-            onTriggered: root.commit(TodoHelper.setSort(root.todoMd, "due"))
+            onTriggered: root.commit(TodoHelper.setSort(root.base(), "due"))
         }
     }
 
@@ -170,19 +199,29 @@ BlockTemplate {
                         dragFrom = -1;
                         slot = -1;
                         if (from >= 0 && to >= 0 && to !== from) {
-                            root.commit(TodoHelper.moveItem(root.todoMd, line, to));
+                            root.commit(TodoHelper.moveItem(root.base(), line, to));
                         }
                     }
 
                     Repeater {
                         id: openRepeater
-                        model: root.todo.open
+                        // By count, not by item: rows (and the field being typed in) stay
+                        // when a change keeps the number of items.
+                        model: root.todo.open.length
 
                         delegate: ColumnLayout {
                             id: openRow
 
-                            required property var modelData
                             required property int index
+                            readonly property var modelData: root.todo.open[index] ?? ({ line: -1, text: "", due: "", notes: "" })
+
+                            // Another item now in this row (moved, sorted): show its text.
+                            onModelDataChanged: if (!itemField.activeFocus) itemField.text = modelData.text
+
+                            function focusText(): void {
+                                itemField.forceActiveFocus();
+                                itemField.cursorPosition = itemField.length;
+                            }
 
                             Layout.fillWidth: true
                             spacing: 0
@@ -226,7 +265,10 @@ BlockTemplate {
                                             }
                                         }
                                         onReleased: openList.finishDrag(openRow.modelData.line)
-                                        onCanceled: openList.dragFrom = -1
+                                        onCanceled: {
+                                            openList.dragFrom = -1;
+                                            openList.slot = -1;
+                                        }
 
                                         QQC2.ToolTip.visible: containsMouse && !pressed
                                         QQC2.ToolTip.text: i18nc("@info:tooltip", "Drag to reorder")
@@ -237,7 +279,7 @@ BlockTemplate {
                                 QQC2.CheckBox {
                                     id: openCheck
                                     checked: false
-                                    onClicked: root.commit(TodoHelper.toggle(root.todoMd, openRow.modelData.line))
+                                    onClicked: root.commit(TodoHelper.toggle(root.base(), openRow.modelData.line))
 
                                     QQC2.ToolTip.visible: hovered
                                     QQC2.ToolTip.text: i18nc("@info:tooltip", "Mark as done")
@@ -255,14 +297,20 @@ BlockTemplate {
                                     font.pointSize: root.fontSize
                                     font.family: Config.editorFont.family
 
+                                    onTextEdited: {
+                                        root.pendingEdit = { line: openRow.modelData.line, text: text };
+                                        pendingTimer.restart();
+                                    }
                                     onEditingFinished: {
-                                        if (text !== openRow.modelData.text) {
-                                            root.commit(TodoHelper.setText(root.todoMd, openRow.modelData.line, text));
+                                        if (root.pendingEdit) {
+                                            root.commit(root.base());
                                         }
                                     }
                                     Keys.onPressed: (event) => {
                                         if (event.key === Qt.Key_Backspace && text.length === 0) {
-                                            root.commit(TodoHelper.removeItem(root.todoMd, openRow.modelData.line));
+                                            const index = openRow.index;
+                                            root.commit(TodoHelper.removeItem(root.base(), openRow.modelData.line));
+                                            root.focusItem(Math.max(0, index - 1));
                                             event.accepted = true;
                                         }
                                     }
@@ -358,7 +406,7 @@ BlockTemplate {
 
                     onAccepted: {
                         if (text.trim().length > 0) {
-                            root.commit(TodoHelper.addItem(root.todoMd, text));
+                            root.commit(TodoHelper.addItem(root.base(), text));
                             text = "";
                         }
                     }
@@ -404,7 +452,7 @@ BlockTemplate {
 
                     QQC2.CheckBox {
                         checked: true
-                        onClicked: root.commit(TodoHelper.toggle(root.todoMd, doneRow.modelData.line))
+                        onClicked: root.commit(TodoHelper.toggle(root.base(), doneRow.modelData.line))
 
                         QQC2.ToolTip.visible: hovered
                         QQC2.ToolTip.text: i18nc("@info:tooltip", "Mark as not done")

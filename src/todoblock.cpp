@@ -17,25 +17,20 @@ namespace
 {
 const QRegularExpression &markerRe()
 {
-    static const QRegularExpression re(u"^<!--\\s*marknote-todo\\b(.*?)-->\\s*$"_s);
+    static const QRegularExpression re(u"^<!--\\s*marknote-todo(?:\\s+(.*?))?\\s*-->\\s*$"_s);
     return re;
 }
 
 const QRegularExpression &itemRe()
 {
-    static const QRegularExpression re(u"^( {0,3})([-*+])\\s+\\[([ xX])\\](?:[ \\t]+(.*))?$"_s);
+    static const QRegularExpression re(u"^( {0,3})([-*+])[ \\t]+\\[([ xX])\\](?:[ \\t]+(.*?))?[ \\t]*$"_s);
     return re;
 }
 
-const QRegularExpression &dueRe()
+/// A due or done date at the end of an item's text (not inside it, e.g. in code).
+const QRegularExpression &tailRe()
 {
-    static const QRegularExpression re(u"\\s*📅\\s*(\\d{4}-\\d{2}-\\d{2})"_s);
-    return re;
-}
-
-const QRegularExpression &doneRe()
-{
-    static const QRegularExpression re(u"\\s*✅\\s*(\\d{4}-\\d{2}-\\d{2})"_s);
+    static const QRegularExpression re(u"[ \\t]*(📅|✅)[ \\t]*(\\d{4}-\\d{2}-\\d{2})[ \\t]*$"_s);
     return re;
 }
 
@@ -75,17 +70,6 @@ Options parseOptions(const QString &text)
     return options;
 }
 
-/// Removes every match of @p re from @p text; returns the date of the last one.
-QString takeDate(const QRegularExpression &re, QString &text)
-{
-    QString date;
-    for (auto hit = re.match(text); hit.hasMatch(); hit = re.match(text)) {
-        date = hit.captured(1);
-        text.remove(hit.capturedStart(), hit.capturedLength());
-    }
-    return date;
-}
-
 std::optional<Item> parseItem(const QString &line, int lineNo)
 {
     const auto m = itemRe().match(line);
@@ -97,33 +81,107 @@ std::optional<Item> parseItem(const QString &line, int lineNo)
     item.bullet = m.captured(2);
     item.checked = m.captured(3) != u" "_s;
     QString text = m.captured(4);
-    item.due = takeDate(dueRe(), text);
-    item.done = takeDate(doneRe(), text);
+    for (auto hit = tailRe().match(text); hit.hasMatch(); hit = tailRe().match(text)) {
+        QString &date = hit.captured(1) == u"📅"_s ? item.due : item.done;
+        if (date.isEmpty()) {
+            date = hit.captured(2);
+        }
+        text.truncate(hit.capturedStart());
+    }
     item.text = trimEnd(text);
     item.line = lineNo;
     return item;
 }
 
-/// Reads the item list starting at line i; returns the next line.
+int indentOf(const QString &line)
+{
+    int n = 0;
+    for (const QChar c : line) {
+        if (c == u' ') {
+            ++n;
+        } else if (c == u'\t') {
+            n += 4;
+        } else {
+            break;
+        }
+    }
+    return n;
+}
+
+/// Lines that end a paragraph instead of continuing it lazily (CommonMark).
+bool interrupts(const QString &line)
+{
+    static const QRegularExpression re(u"^ {0,3}(#{1,6}(\\s|$)|>|`{3}|~{3}|<|[-*+][ \\t]|\\d+[.)][ \\t]|([-*_])([ \\t]*\\3){2,}[ \\t]*$)"_s);
+    return matches(re, line);
+}
+
+/// Reads the item list starting at line i; returns the next line. Lines
+/// indented deeper than the first item (notes, sub-items), blank lines inside
+/// the list and lazy continuation lines belong to the item above.
 int readItems(const QStringList &lines, int i, QList<Item> &items)
 {
-    static const QRegularExpression indentedRe(u"^\\s+\\S"_s);
-    static const QRegularExpression detailsRe(u"^\\s*</?details>"_s, QRegularExpression::CaseInsensitiveOption);
+    int base = -1;
+    const auto topItem = [&](int n) -> std::optional<Item> {
+        auto item = parseItem(lines[n], n);
+        if (item && (base < 0 || item->indent.size() <= base)) {
+            return item;
+        }
+        return std::nullopt;
+    };
     while (i < lines.size()) {
-        if (auto item = parseItem(lines[i], i)) {
+        const QString &line = lines[i];
+        if (auto item = topItem(i)) {
+            if (base < 0) {
+                base = int(item->indent.size());
+            }
             items << *item;
             ++i;
             continue;
         }
-        // Indented, non-blank lines belong to the item above (notes, sub-items).
-        if (!items.isEmpty() && matches(indentedRe, lines[i]) && !matches(detailsRe, lines[i])) {
-            items.last().extra << lines[i];
+        if (items.isEmpty()) {
+            break;
+        }
+        Item &last = items.last();
+        if (line.trimmed().isEmpty()) {
+            // Blank lines stay in the list only if it goes on after them.
+            int j = i;
+            while (j < lines.size() && lines[j].trimmed().isEmpty()) {
+                ++j;
+            }
+            if (j < lines.size() && (topItem(j) || indentOf(lines[j]) > base)) {
+                for (; i < j; ++i) {
+                    last.extra << lines[i];
+                }
+                continue;
+            }
+            break;
+        }
+        if (indentOf(line) > base) {
+            last.extra << line;
+            ++i;
+            continue;
+        }
+        const bool afterText = last.extra.isEmpty() || !last.extra.last().trimmed().isEmpty();
+        if (afterText && !interrupts(line)) {
+            last.extra << line; // a lazily wrapped line of the item's paragraph
             ++i;
             continue;
         }
         break;
     }
     return i;
+}
+
+/// The body with "\n" line ends, and whether it had "\r\n" ones.
+QString toLf(const QString &body, bool *crlf)
+{
+    *crlf = body.contains(u"\r\n"_s);
+    return *crlf ? QString(body).replace(u"\r\n"_s, u"\n"_s) : body;
+}
+
+QString fromLf(const QString &body, bool crlf)
+{
+    return crlf ? QString(body).replace(u'\n', u"\r\n"_s) : body;
 }
 
 int skipBlank(const QStringList &lines, int i)
@@ -138,7 +196,8 @@ int skipBlank(const QStringList &lines, int i)
 std::optional<Block> parseBlockAt(const QStringList &lines, int start)
 {
     static const QRegularExpression detailsRe(u"^\\s*<details(\\s+open)?\\s*>\\s*$"_s, QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression summaryRe(u"^\\s*<summary>.*</summary>\\s*$"_s, QRegularExpression::CaseInsensitiveOption);
+    // Only our own section ("Done (n)"), not a user's <details> after the list.
+    static const QRegularExpression summaryRe(u"^\\s*<summary>\\s*Done \\(\\d+\\)\\s*</summary>\\s*$"_s, QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression closeRe(u"^\\s*</details>\\s*$"_s, QRegularExpression::CaseInsensitiveOption);
 
     const auto m = markerRe().match(lines[start]);
@@ -156,7 +215,8 @@ std::optional<Block> parseBlockAt(const QStringList &lines, int start)
     }
     // The Done section: <details>, <summary>, done items, </details>.
     int j = skipBlank(lines, i);
-    if (j < lines.size() && matches(detailsRe, lines[j])) {
+    const auto details = j < lines.size() ? detailsRe.match(lines[j]) : QRegularExpressionMatch();
+    if (details.hasMatch()) {
         const int detailsLine = j;
         j = skipBlank(lines, j + 1);
         if (j < lines.size() && matches(summaryRe, lines[j])) {
@@ -169,6 +229,7 @@ std::optional<Block> parseBlockAt(const QStringList &lines, int start)
             if (j < lines.size() && matches(closeRe, lines[j])) {
                 block.done = done;
                 block.doneStart = detailsLine;
+                block.detailsOpen = details.hasCaptured(1);
                 block.end = j + 1;
             }
         }
@@ -222,8 +283,12 @@ QString replaceBlock(const QString &body, Block block, const QString &today)
 {
     normalise(block, today);
     QStringList lines = body.split(u'\n');
+    QStringList replacement = serialize(block);
+    // The block ends in HTML (</details>) or a list: a line right after it would join it.
+    if (block.end < lines.size() && !lines[block.end].trimmed().isEmpty()) {
+        replacement << QString();
+    }
     lines.remove(block.start, block.end - block.start);
-    const QStringList replacement = serialize(block);
     for (int k = 0; k < replacement.size(); ++k) {
         lines.insert(block.start + k, replacement[k]);
     }
@@ -248,22 +313,22 @@ QString addDays(const QString &date, int days)
 
 QList<Block> findBlocks(const QString &body)
 {
-    static const QRegularExpression fenceRe(u"^\\s{0,3}(`{3,}|~{3,})"_s);
-    const QStringList lines = body.split(u'\n');
+    static const QRegularExpression fenceRe(u"^ {0,3}(`{3,}|~{3,})(.*)$"_s);
+    const QStringList lines = QString(body).replace(u"\r\n"_s, u"\n"_s).split(u'\n');
     QList<Block> blocks;
-    QChar fence;
+    QChar fence; // the open code fence's character and length (CommonMark rules)
+    qsizetype fenceLength = 0;
     for (int i = 0; i < lines.size(); ++i) {
         const auto f = fenceRe.match(lines[i]);
-        if (f.hasMatch()) {
-            const QChar c = f.captured(1).at(0);
-            if (fence.isNull()) {
-                fence = c;
-            } else if (c == fence) {
+        if (!fence.isNull()) {
+            if (f.hasMatch() && f.captured(1).at(0) == fence && f.captured(1).size() >= fenceLength && f.captured(2).trimmed().isEmpty()) {
                 fence = QChar();
             }
             continue;
         }
-        if (!fence.isNull()) {
+        if (f.hasMatch() && !(f.captured(1).at(0) == u'`' && f.captured(2).contains(u'`'))) {
+            fence = f.captured(1).at(0);
+            fenceLength = f.captured(1).size();
             continue;
         }
         if (auto block = parseBlockAt(lines, i)) {
@@ -308,7 +373,28 @@ QString itemLine(const Item &item)
     if (!item.done.isEmpty()) {
         parts << u"✅ "_s + item.done;
     }
-    return parts.join(u' ');
+    // An empty item keeps the space after "[ ]", so text typed there stays an item.
+    return parts.size() == 1 ? parts.first() + u' ' : parts.join(u' ');
+}
+
+namespace
+{
+/// An item's lines without blank lines at the end (they would pile up when items move).
+QStringList extraLines(const Item &item)
+{
+    qsizetype n = item.extra.size();
+    while (n > 0 && item.extra[n - 1].trimmed().isEmpty()) {
+        --n;
+    }
+    return item.extra.mid(0, n);
+}
+
+void appendItems(QStringList &out, const QList<Item> &items)
+{
+    for (int k = 0; k < items.size(); ++k) {
+        out << itemLine(items[k]) << (k == items.size() - 1 ? extraLines(items[k]) : items[k].extra);
+    }
+}
 }
 
 QStringList serialize(const Block &block)
@@ -319,20 +405,19 @@ QStringList serialize(const Block &block)
     }
     opts << block.options.rest;
     QStringList out{opts.isEmpty() ? markerLine.toString() : u"<!-- marknote-todo %1 -->"_s.arg(opts.join(u' '))};
-    for (const Item &it : block.open) {
-        out << itemLine(it) << it.extra;
-    }
+    appendItems(out, block.open);
     if (!block.done.isEmpty()) {
-        out << QString() << u"<details>"_s << u"<summary>Done (%1)</summary>"_s.arg(block.done.size()) << QString();
-        for (const Item &it : block.done) {
-            out << itemLine(it) << it.extra;
-        }
+        out << QString() << (block.detailsOpen ? u"<details open>"_s : u"<details>"_s) << u"<summary>Done (%1)</summary>"_s.arg(block.done.size())
+            << QString();
+        appendItems(out, block.done);
         out << QString() << u"</details>"_s;
     }
     return out;
 }
 
-std::optional<QString> apply(const QString &body, const Op &op, const QString &today)
+namespace
+{
+std::optional<QString> applyLf(const QString &body, const Op &op, const QString &today)
 {
     auto where = locate(body, op.line);
     if (!where) {
@@ -341,6 +426,11 @@ std::optional<QString> apply(const QString &body, const Op &op, const QString &t
     Block &block = where->block;
     QList<Item> *list = where->list.isEmpty() ? nullptr : (where->list == u"open"_s ? &block.open : &block.done);
     const int index = where->index;
+    // Item operations act on the item's own line, not on its notes or sub-items
+    // (a sub-item's checkbox is then ticked in place by toggleLine).
+    if (list && list->at(index).line != op.line && op.type != Op::Sort && op.type != Op::Add) {
+        return std::nullopt;
+    }
 
     switch (op.type) {
     case Op::Toggle: {
@@ -377,7 +467,7 @@ std::optional<QString> apply(const QString &body, const Op &op, const QString &t
         return replaceBlock(body, block, today);
     case Op::Add: {
         Item item;
-        item.text = op.text;
+        item.text = op.text.simplified(); // one line: pasted text must not break the block
         block.open.append(item);
         return replaceBlock(body, block, today);
     }
@@ -415,6 +505,15 @@ std::optional<QString> apply(const QString &body, const Op &op, const QString &t
     return std::nullopt;
 }
 
+}
+
+std::optional<QString> apply(const QString &body, const Op &op, const QString &today)
+{
+    bool crlf = false;
+    const auto out = applyLf(toLf(body, &crlf), op, today);
+    return out ? std::optional<QString>(fromLf(*out, crlf)) : std::nullopt;
+}
+
 QString toggleLine(const QString &body, int line, bool checked, const QString &today)
 {
     Op op;
@@ -428,7 +527,8 @@ QString toggleLine(const QString &body, int line, bool checked, const QString &t
     if (line < 0 || line >= lines.size()) {
         return body;
     }
-    static const QRegularExpression boxRe(u"^(\\s*(?:[-*+]|\\d+[.)])\\s+)\\[[ xX]\\]"_s);
+    // Also inside block quotes ("> - [ ] …").
+    static const QRegularExpression boxRe(u"^((?:\\s*>)*\\s*(?:[-*+]|\\d+[.)])\\s+)\\[[ xX]\\]"_s);
     const auto m = boxRe.match(lines[line]);
     if (m.hasMatch()) {
         lines[line].replace(0, m.capturedLength(), m.captured(1) + (checked ? u"[x]"_s : u"[ ]"_s));
@@ -436,7 +536,9 @@ QString toggleLine(const QString &body, int line, bool checked, const QString &t
     return lines.join(u'\n');
 }
 
-std::optional<QString> makeBlock(const QString &body, int line, const QString &today)
+namespace
+{
+std::optional<QString> makeBlockLf(const QString &body, int line, const QString &today)
 {
     if (locate(body, line)) {
         return std::nullopt;
@@ -469,6 +571,14 @@ std::optional<QString> makeBlock(const QString &body, int line, const QString &t
         return std::nullopt;
     }
     return replaceBlock(withMarker, *block, today);
+}
+}
+
+std::optional<QString> makeBlock(const QString &body, int line, const QString &today)
+{
+    bool crlf = false;
+    const auto out = makeBlockLf(toLf(body, &crlf), line, today);
+    return out ? std::optional<QString>(fromLf(*out, crlf)) : std::nullopt;
 }
 
 QString dueState(const QString &due, const QString &today)
@@ -641,5 +751,5 @@ QString TodoHelper::fromDate(const QDate &date) const
 
 QString TodoHelper::newBlock() const
 {
-    return TodoBlock::markerLine.toString() + u"\n- [ ]"_s;
+    return TodoBlock::markerLine.toString() + u"\n- [ ] "_s; // the space keeps typed text an item
 }

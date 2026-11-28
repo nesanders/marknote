@@ -201,7 +201,11 @@ function build(state, resolveImage, resolveAttachment) {
                 if (isActive(from)) return;
                 const ln = state.doc.lineAt(from);
                 const att = parseAttachment(ln.text);
-                if (att) {
+                // Only a paragraph of its own is a card (as in the rendered view):
+                // right under a text line it would continue that paragraph.
+                const prev = ln.number > 1 ? state.doc.line(ln.number - 1).text : '';
+                const next = ln.number < state.doc.lines ? state.doc.line(ln.number + 1).text : '';
+                if (att && !prev.trim() && (!next.trim() || /^\s{0,3}(#|>|[-*+]\s|\d+[.)]\s|```|~~~|<)/.test(next))) {
                     add(ln.from, ln.to, Decoration.replace({ widget: new RenderedWidget('attachment', att.href, { name: att.name, resolve: resolveAttachment }), block: true }));
                     return false;
                 }
